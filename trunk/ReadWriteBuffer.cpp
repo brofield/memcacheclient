@@ -1,4 +1,4 @@
-/*! @file       ReadWriteBuffer.h
+/*! @file       ReadWriteBuffer.cpp
     @version    1.0
     @brief      Byte buffer management
 */
@@ -94,6 +94,10 @@ ReadWriteBuffer::SetExternalBuffer(
     mGrowBy = 0; // when 0 = internal buffer
 }
 
+/*! round a value up to the nearest multiple of the block 
+    @param nValue   value to be rounded up
+    @param nBlock   block size to round the value to
+ */
 static inline size_t roundup(size_t nValue, size_t nBlock) {
     if ((nValue % nBlock) != 0) {
         nValue = (nValue / nBlock) * nBlock + nBlock;

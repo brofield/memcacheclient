@@ -2,7 +2,7 @@
     @brief  Test program for MemCacheClient
 */
 
-#ifdef _WIN32
+#ifdef WIN32
 # include <windows.h>
 #endif
 
@@ -276,7 +276,7 @@ static int TestDelTimeout(MemCacheClient * pClient)
 
 int main(int argc, char ** argv)
 {
-#ifdef _WIN32
+#ifdef WIN32
     WSADATA wsaData;
     int rc = WSAStartup(MAKEWORD(2,0), &wsaData);
     if (rc != 0) {
@@ -324,7 +324,7 @@ int main(int argc, char ** argv)
         nFails = 1;
     }
 
-#ifdef _WIN32
+#ifdef WIN32
     WSACleanup();
 #endif
     return nFails;
