@@ -31,7 +31,7 @@
 
     <li> Include the MemCacheClient.*, ReadWriteBuffer.* and md5.* files in your project.
 
-<pre>#include "MemCacheClient.h"</pre>
+<pre>@#include "MemCacheClient.h"</pre>
 
     <li> Create an instance of the MemCacheClient object.
 
@@ -90,7 +90,7 @@ if (req.mResult == MCERR_OK) ...</pre>
 #ifndef INCLUDED_MemCacheClient
 #define INCLUDED_MemCacheClient
 
-#ifndef _WIN32
+#ifndef WIN32
 # include <stdint.h>
 #endif
 
@@ -130,7 +130,7 @@ class MemCacheClient
 
 public:
     typedef std::string         string_t;   //!< Abstract the string class for internal use
-#ifdef _WIN32
+#ifdef WIN32
     typedef unsigned __int64    uint64_t;   //!< 64-bit unsigned type
 #else
     typedef unsigned long long  uint64_t;   //!< 64-bit unsigned type
@@ -517,8 +517,7 @@ private:
 
     int m_nTimeoutMs;                       //!< network timeout in millisec for all operations
 
-    /*! @brief This structure the hash key to server (n:1) relationship used for consistent
-        hashing. 
+    /*! @brief Maintain the N:1 hash key to server relationship used for consistent hashing. 
         
         Consistent hashing for the servers ensures that even with changes to the server list, 
         many of the data keys will continue to mapped to the same server. This ensures that 

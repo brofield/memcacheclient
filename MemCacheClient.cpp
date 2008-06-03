@@ -3,12 +3,16 @@
     @brief      Basic memcached client
  */
 
-#ifdef _WIN32
+/*! @cond IGNORE */
+#ifdef WIN32
 # pragma warning(disable: 4127 4702) // C4127: conditional expression is constant, C4702: unreachable code
 # pragma comment(lib, "ws2_32.lib")
 # include <winsock2.h>
-# define GetLastSocketError()	WSAGetLastError()
-# define EWOULDBLOCK    	WSAEWOULDBLOCK
+# define GetLastSocketError()   WSAGetLastError()
+# define EWOULDBLOCK            WSAEWOULDBLOCK
+# define snprintf               _snprintf
+# define SPRINTF_UINT64         "%I64u"
+# define STRTOUL64              _strtoui64
 #else
 # include <unistd.h>
 # include <sys/types.h>
@@ -18,16 +22,19 @@
 # include <arpa/inet.h>
 # include <netinet/in.h>
 # include <errno.h>
-# define SOCKET          	int
-# define INVALID_SOCKET  	-1
-# define SOCKET_ERROR    	-1
-# define closesocket     	close
-# define ioctlsocket     	ioctl
-# define GetLastSocketError()	errno
+# define SOCKET                 int
+# define INVALID_SOCKET         -1
+# define SOCKET_ERROR           -1
+# define closesocket            close
+# define ioctlsocket            ioctl
+# define GetLastSocketError()   errno
 # ifndef EWOULDBLOCK
-#  define EWOULDBLOCK    	EAGAIN
+#  define EWOULDBLOCK           EAGAIN
 # endif
+# define SPRINTF_UINT64         "%llu"
+# define STRTOUL64              strtoull
 #endif
+/*! @endcond */
 
 #include <stdio.h>
 #include <string.h>
@@ -39,61 +46,105 @@
 #include "MemCacheClient.h"
 #include "md5.h"
 
-// period of time that needs to elapse before we try to reconnect to
-// a memcached server that failed to response to a connection attempt.
-#define MEMCACHECLIENT_RECONNECT_SEC    60
+/*! @brief Minimum period of time between connection attempts to a server.
 
-#ifdef _WIN32
-# define snprintf        _snprintf
-# define SPRINTF_UINT64  "%I64u"
-# define STRTOUL64       _strtoui64
-#else
-# define SPRINTF_UINT64  "%llu"
-# define STRTOUL64       strtoull
-#endif
+    After either an attempt or an actual connection to a server, there will
+    be a minimum of this period before we attempt to connect again. 
+ */    
+#define MEMCACHECLIENT_RECONNECT_SEC    60
 
 ///////////////////////////////////////////////////////////////////////////////
 // ServerSocket
 //
-// Socket connection, disconnection, and buffered data receives.
 
+/*! @brief Socket connection, disconnection, and buffered data receives. */
 class ServerSocket
 {
 private:
-    const static int MAXBUF = 1024;
+    const static int MAXBUF = 1024; //!< size of internal data buffer
 
-    SOCKET  mSocket;
-    char    mBuf[MAXBUF];
-    int     mIdx;
-    int     mBufLen;
+    SOCKET  mSocket;        //!< socket being abstracted
+    char    mBuf[MAXBUF];   //!< internal data buffer
+    int     mIdx;           //!< current read index for mBuf
+    int     mBufLen;        //!< current end index for mBuf
 
 private:
-    ServerSocket(const ServerSocket &); // disable 
-    ServerSocket & operator=(const ServerSocket &); // disable 
-
-    int FillBuffer(char * a_pszBuf, int a_nBufSiz);
+    /*! @brief copy constructor is disabled */
+    ServerSocket(const ServerSocket &); 
+    /*! @brief copy operator is disabled */
+    ServerSocket & operator=(const ServerSocket &); 
+    /*! @brief Receive data into a buffer with as many bytes as possible up 
+        to the size of the buffer.
+        @param a_pszBuf     Buffer to be filled
+        @param a_nBufSiz    Maximum number of bytes to receive
+        @return number of bytes actually received
+     */
+    int ReceiveBytes(char * a_pszBuf, int a_nBufSiz);
 
 public:
+    /*! @brief Exception thrown on any send or receive error */
     class Exception : public std::exception { 
     public:
-        const char * mWhat;
-        Exception(const char * n = "") { mWhat = n; }
+        const char * mWhat; //!< error message 
+        /*! constructor
+            @param aWhat optional message 
+         */
+        Exception(const char * aWhat = "") { mWhat = aWhat; }
     };
 
 public:
+    /*! @brief constructor */
     ServerSocket();
+
+    /*! @brief destructor */
     ~ServerSocket(); 
+
+    /*! @brief connect the socket to an address
+        @param a_nIpAddress Server IP address as returned from inet_addr
+        @param a_nPort      Server port
+        @param a_nTimeout   Connection timeout period in milliseconds
+     */
     bool Connect(unsigned long a_nIpAddress, int a_nPort, int a_nTimeout);
+
+    /*! @brief Determine if we are currently connected to a server */
     inline bool IsConnected() const { return mSocket != INVALID_SOCKET; }
+
+    /*! @brief Disconnect from the server */
     void Disconnect();
+
+    /*! @brief Send the supplied bytes to the server. 
+    
+        A blocking send is used, so the function will block until either 
+        all bytes are sent or an error occurs. 
+        
+        @param a_pszBuf     Bytes to send to the server
+        @param a_nBufSiz    Number of bytes to send to the server
+        @throw Exception on socket error
+     */
     void SendBytes(const char * a_pszBuf, size_t a_nBufSiz); // throw Exception
-    int  GetBytes(char * a_pszBuf, int a_nBufSiz); // throw Exception
+
+    /*! @brief Receive a block of data from the server. 
+        @param a_pszBuf     Buffer to receive the data into
+        @param a_nBufSiz    Maximum number of bytes to be received
+        @return number of bytes that were actually received
+        @throw Exception on socket error
+     */
+    int GetBytes(char * a_pszBuf, int a_nBufSiz); // throw Exception
+
+    /*! @brief Receive and discard bytes.
+        @param a_nBytes Number of bytes to be received and ignored.
+        @throw Exception on socket error
+     */
     void DiscardBytes(int a_nBytes); // throw Exception
 
+    /*! @brief Receive a single byte
+        @return received byte
+        @throw Exception on socket error
+     */
     inline char GetByte() { 
         if (mIdx >= mBufLen) {
             mIdx = 0;
-            mBufLen = FillBuffer(mBuf, MAXBUF);
+            mBufLen = ReceiveBytes(mBuf, MAXBUF);
         }
         return mBuf[mIdx++];
     }
@@ -214,7 +265,7 @@ ServerSocket::SendBytes(
 }
 
 int 
-ServerSocket::FillBuffer(
+ServerSocket::ReceiveBytes(
     char *  a_pszBuf, 
     int     a_nBufSiz
     ) 
@@ -241,7 +292,7 @@ ServerSocket::GetBytes(
         if (mIdx == mBufLen) mIdx = mBufLen = 0;
         return nLen;
     }
-    return FillBuffer(a_pszBuf, a_nBufSiz);
+    return ReceiveBytes(a_pszBuf, a_nBufSiz);
 }
 
 void 
@@ -252,7 +303,7 @@ ServerSocket::DiscardBytes(
     while (a_nBytes > 0) {
         if (mIdx == mBufLen) {
             mIdx = 0;
-            mBufLen = FillBuffer(mBuf, MAXBUF);
+            mBufLen = ReceiveBytes(mBuf, MAXBUF);
         }
 
         int nLen = mBufLen - mIdx;
@@ -267,31 +318,68 @@ ServerSocket::DiscardBytes(
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// MemCacheClient::Server
-//
-// Server abstraction
 
+/*! @brief Abstraction of a server connection */
 class MemCacheClient::Server : public ServerSocket
 {
+    /*! @brief max length of a server address */
     const static size_t ADDRLEN = sizeof("aaa.bbb.ccc.ddd:PPPPP");
 
 public:
+    /*! @brief constructor */
     Server() : mIp(INADDR_NONE), mPort(0), mLastConnect(0) { mAddress[0] = 0; }
+    
+    /*! @brief copy constructor 
+        @param rhs server to copy address of
+     */
     Server(const Server & rhs) { operator=(rhs); }
+    
+    /*! @brief destructor */
     ~Server() { }
 
+    /*! @brief copy operator
+        @param rhs server to copy server listen address from
+     */
     Server & operator=(const Server & rhs);
+    
+    /*! @brief equality based on server listen address 
+        @param rhs server to compare to
+        @return true when servers are using the same listen address
+     */
     bool operator==(const Server & rhs) const;
+    
+    /*! @brief inequality based on server listen address 
+        @param rhs server to compare to
+        @return true when servers are not using the same listen address
+     */
     inline bool operator!=(const Server & rhs) const { return !operator==(rhs); }
+    
+    /*! @brief Set the listen address for this server 
+        @param a_pszServer Listen address in IP:PORT format
+        @return true if listen address was correctly parsed
+     */
     bool Set(const char * a_pszServer); 
+    
+    /*! @brief Attempt to connect to the server.
+        @param a_nTimeout Timeout for connection in milliseconds 
+        @return true if connection was successful
+     */
     bool Connect(int a_nTimeout);
+    
+    /*! @brief Get the string representation of this server listen address.
+    
+        This may not be the same as the address passed in. It will always be
+        in the format IP:PORT.
+        
+        @return Server listen address as IP:PORT
+     */
     inline const char * GetAddress() const { return mAddress; }
 
 private:
-    char            mAddress[ADDRLEN];
-    unsigned long   mIp;
-    int             mPort;
-    time_t          mLastConnect;
+    char            mAddress[ADDRLEN];  //!< server IP:PORT as string 
+    unsigned long   mIp;                //!< server IP address
+    int             mPort;              //!< server port
+    time_t          mLastConnect;       //!< last connection time
 };
 
 MemCacheClient::Server & 
@@ -311,7 +399,7 @@ MemCacheClient::Server::operator==(
     const Server & rhs
     ) const
 {
-    return 0 == strcmp(mAddress, rhs.mAddress);
+    return mIp == rhs.mIp && mPort == rhs.mPort;
 }
 
 bool 
@@ -354,7 +442,7 @@ MemCacheClient::Server::Connect(
 
     // only try to re-connect to a broken server occasionally
     time_t nNow;
-#ifdef _WIN32
+#ifdef WIN32
     nNow = GetTickCount();
     if (nNow - mLastConnect < MEMCACHECLIENT_RECONNECT_SEC * 1000) {
 #else
@@ -467,10 +555,18 @@ MemCacheClient::AddServer(
     return true;
 }
 
+/*! Match a server by comparing pointers */
 struct MemCacheClient::ConsistentHash::MatchServer
 {
-    MemCacheClient::Server * mServer;
+    /*! server being searched for */
+    MemCacheClient::Server * mServer; 
+    /*! constructor 
+        @param aServer server to search for
+     */
     MatchServer(MemCacheClient::Server * aServer) : mServer(aServer) { }
+    /*! compare current entry against search entry 
+        @param rhs  entry to compare
+     */
     bool operator()(const ConsistentHash & rhs) const { return rhs.mServer == mServer; }
 };
 
@@ -563,8 +659,14 @@ MemCacheClient::FindServer(
     return pServer;
 }
 
+/*! @brief Sort the requests into server order */
 struct MemCacheClient::MemRequest::Sort 
 { 
+    /*! @brief Compare two requests for less ordering
+        @param pl Request item 
+        @param pr Request item 
+        @return true if pl is less than pr.
+     */
     bool operator()(const MemRequest * pl, const MemRequest * pr) const {
         return pl->mServer < pr->mServer; // any order is fine
     }
