@@ -84,7 +84,7 @@ public:
     ServerSocket();
     ~ServerSocket(); 
     bool Connect(unsigned long a_nIpAddress, int a_nPort, int a_nTimeout);
-    inline const IsConnected() const { return mSocket != INVALID_SOCKET; }
+    inline bool IsConnected() const { return mSocket != INVALID_SOCKET; }
     void Disconnect();
     void SendBytes(const char * a_pszBuf, size_t a_nBufSiz); // throw Exception
     int  GetBytes(char * a_pszBuf, int a_nBufSiz); // throw Exception
