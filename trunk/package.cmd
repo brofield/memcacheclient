@@ -6,6 +6,10 @@ FOR /F "tokens=*" %%G IN ('DIR /AD /B /S lib*') DO (
     DEL /S /Q "%%G"
     RD "%%G"
 )
+FOR /F "tokens=*" %%G IN ('DIR /AD /B /S _upgrade*') DO (
+    DEL /S /Q "%%G"
+    RD "%%G"
+)
 FOR /F "tokens=*" %%G IN ('DIR /AD /B /S Debug*') DO (
     DEL /S /Q "%%G"
     RD "%%G"
@@ -15,9 +19,10 @@ FOR /F "tokens=*" %%G IN ('DIR /AD /B /S Release*') DO (
     RD "%%G"
 )
 DEL /Q "memcacheclient.ncb"
-ATTRIB -H "memcacheclient.suo"
-DEL /Q "memcacheclient.suo"
+ATTRIB -H "memcacheclient.suo*"
+DEL /Q "memcacheclient.suo*" 
 DEL /Q "memcacheclient.opt"
+DEL /Q "*.sln.old" "*.vcproj.*.user" "*.vcproj.*.old" "upgradelog.xml"
 START "Generate documentation" /WAIT memcacheclient.doxy
 cd ..
 del memcacheclient-%VERSION%.zip
