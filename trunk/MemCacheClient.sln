@@ -1,0 +1,30 @@
+Microsoft Visual Studio Solution File, Format Version 8.00
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MemCacheClient", "MemCacheClient.vcproj", "{C1C65CCC-CC70-49E8-A310-5D0AAD670952}"
+	ProjectSection(ProjectDependencies) = postProject
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "TestMemCacheClient", "TestMemCacheClient.vcproj", "{E0E3FC8D-2341-4D2A-8AB5-1AB193056620}"
+	ProjectSection(ProjectDependencies) = postProject
+		{C1C65CCC-CC70-49E8-A310-5D0AAD670952} = {C1C65CCC-CC70-49E8-A310-5D0AAD670952}
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfiguration) = preSolution
+		Debug = Debug
+		Release = Release
+	EndGlobalSection
+	GlobalSection(ProjectConfiguration) = postSolution
+		{C1C65CCC-CC70-49E8-A310-5D0AAD670952}.Debug.ActiveCfg = Debug|Win32
+		{C1C65CCC-CC70-49E8-A310-5D0AAD670952}.Debug.Build.0 = Debug|Win32
+		{C1C65CCC-CC70-49E8-A310-5D0AAD670952}.Release.ActiveCfg = Release|Win32
+		{C1C65CCC-CC70-49E8-A310-5D0AAD670952}.Release.Build.0 = Release|Win32
+		{E0E3FC8D-2341-4D2A-8AB5-1AB193056620}.Debug.ActiveCfg = Debug|Win32
+		{E0E3FC8D-2341-4D2A-8AB5-1AB193056620}.Debug.Build.0 = Debug|Win32
+		{E0E3FC8D-2341-4D2A-8AB5-1AB193056620}.Release.ActiveCfg = Release|Win32
+		{E0E3FC8D-2341-4D2A-8AB5-1AB193056620}.Release.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+	EndGlobalSection
+	GlobalSection(ExtensibilityAddIns) = postSolution
+	EndGlobalSection
+EndGlobal
