@@ -679,12 +679,16 @@ MemCacheClient::Combine(
     int             a_nCount
     )
 {
+	if (a_nCount < 1) return 0;
+
     MemRequest * rgpItem[MAX_REQUESTS] = { NULL };
     if (a_nCount > MAX_REQUESTS) return -1; // invalid args
 
     // initialize and find all of the servers for these items
     int nItemCount = 0;
     for (int n = 0; n < a_nCount; ++n) {
+        // ensure that the key doesn't have a space in it
+        assert(NULL == strchr(a_rgItem[n].mKey.data(), ' '));
         a_rgItem[n].mServer = FindServer(a_rgItem[n].mKey);
         if (a_rgItem[n].mServer) {
             rgpItem[nItemCount++] = &a_rgItem[n];
@@ -961,10 +965,12 @@ MemCacheClient::Store(
     int             a_nCount
     )
 {
-    // no streamlining on storage requests
+    if (a_nCount < 1) return 0;
 
     // initialize and find all of the servers for these items
     for (int n = 0; n < a_nCount; ++n) {
+        // ensure that the key doesn't have a space in it
+        assert(NULL == strchr(a_rgItem[n].mKey.data(), ' '));
         a_rgItem[n].mServer = FindServer(a_rgItem[n].mKey);
         if (!a_rgItem[n].mServer) {
             a_rgItem[n].mResult = MCERR_NOSERVER;

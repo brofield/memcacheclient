@@ -13,6 +13,19 @@
 
 #define VERIFY(x)   if (!(x)) throw std::exception();
 
+#ifdef WIN32
+# define GetTimer()     GetTickCount()
+# define MilliSleep(x)  Sleep(x)
+#else
+inline static u_long GetTimer() {
+    struct timeval tv;
+    struct timezone tz;
+    gettimeofday(&tv, &tz);
+    return (u_long) (tv.tv_sec * 1000 + tv.tv_usec / 1000);
+}
+# define MilliSleep(x)  usleep((x) * 1000)
+#endif
+
 static int TestServerParsing()
 {
     // ensure that adding servers correctly parses the name
@@ -231,10 +244,6 @@ static int TestDecrement(MemCacheClient * pClient)
     }
 }
 
-/*
-Removed as it always fails the test. For some reason the server always
-succeeds with the set command despite having a timeout on the delete.
-
 static int TestDelTimeout(MemCacheClient * pClient)
 {
     MemCacheClient::MemRequest oItem;
@@ -247,22 +256,27 @@ static int TestDelTimeout(MemCacheClient * pClient)
         VERIFY(pClient->Add(oItem) == 1);
         VERIFY(oItem.mResult == MCERR_OK);
 
-        oItem.mExpiry = 1; // 1 second from now
+        u_long nStart = GetTimer();
+
+        oItem.mExpiry = 5; // 5 seconds from now
         VERIFY(pClient->Del(oItem) == 1);
         VERIFY(oItem.mResult == MCERR_OK);
         
-        DWORD dwStart = GetTickCount();
-
-        VERIFY(pClient->Set(oItem) == 1);
+        oItem.mExpiry = 0;
+        VERIFY(pClient->Add(oItem) == 1);
         VERIFY(oItem.mResult == MCERR_NOTSTORED);
 
         while (oItem.mResult == MCERR_NOTSTORED) {
-            VERIFY(pClient->Set(oItem) == 1);
+            MilliSleep(100);
+            VERIFY(pClient->Add(oItem) == 1);
         }
 
-        DWORD dwDone = GetTickCount();
+        u_long nFinish = GetTimer();
 
-        VERIFY(dwDone - dwStart >= 1000); // took 1 second
+        VERIFY(oItem.mResult == MCERR_OK);
+
+        u_long nPeriod = nFinish - nStart;
+        VERIFY(nPeriod >= 4500); // took 5 seconds (+-10%)
 
         printf("PASSED: TestDelTimeout\n");
         return 0;
@@ -272,7 +286,6 @@ static int TestDelTimeout(MemCacheClient * pClient)
         return 1;
     }
 }
-*/
 
 int main(int argc, char ** argv)
 {
@@ -312,7 +325,8 @@ int main(int argc, char ** argv)
     nFails += TestDel(pClient);
     nFails += TestIncrement(pClient);
     nFails += TestDecrement(pClient);
-    
+    nFails += TestDelTimeout(pClient);
+
     delete pClient;
 
     printf("\n");

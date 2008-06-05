@@ -16,6 +16,7 @@ ReadWriteBuffer::ReadWriteBuffer()
     , mBufLen(0)
     , mBufIdx(0)
     , mGrowBy(1024)
+    , mIsExt(false)
     , mBuf(NULL)
 {
 }
@@ -27,6 +28,7 @@ ReadWriteBuffer::ReadWriteBuffer(
     , mBufLen(0)
     , mBufIdx(0)
     , mGrowBy(1024)
+    , mIsExt(false)
     , mBuf(NULL)
 {
     operator=(rhs);
@@ -56,15 +58,16 @@ ReadWriteBuffer::~ReadWriteBuffer()
 void
 ReadWriteBuffer::Deallocate()
 {
-    if (mBuf && mGrowBy) {
+    if (mBuf && !mIsExt) {
         free(mBuf);
     }
 
-    mBuf    = NULL;
     mBufSiz = 0;
     mBufIdx = 0;
     mBufLen = 0;
     mGrowBy = 1024;
+    mIsExt  = false;
+    mBuf    = NULL;
 }
 
 void
@@ -78,7 +81,8 @@ void
 ReadWriteBuffer::SetExternalBuffer(
     void *  a_pBuf, 
     size_t  a_nBufSiz, 
-    size_t  a_nBufLen
+    size_t  a_nBufLen,
+    size_t  a_nGrowBy
     )
 {
     if (!a_pBuf) throw std::invalid_argument("a_pBuf");
@@ -87,11 +91,12 @@ ReadWriteBuffer::SetExternalBuffer(
 
     Deallocate();
 
-    mBuf    = (char *) a_pBuf;
     mBufSiz = a_nBufSiz;
     mBufIdx = 0;
     mBufLen = a_nBufLen;
-    mGrowBy = 0; // when 0 = internal buffer
+    mGrowBy = a_nGrowBy; 
+    mIsExt  = true;
+    mBuf    = (char *) a_pBuf;
 }
 
 /*! round a value up to the nearest multiple of the block 
@@ -130,14 +135,25 @@ ReadWriteBuffer::GetWriteBuffer(
     )
 {
     if (mBufLen + a_nMinBytes > mBufSiz) {
-        if (0 == mGrowBy) throw std::overflow_error("external buffer full");
-        size_t nNewSiz = mBufSiz + roundup(a_nMinBytes, mGrowBy);
-        
-        char * pBuf = (char *) realloc(mBuf, nNewSiz);
-        if (!pBuf) throw std::bad_alloc();
+        if (mIsExt) {
+            if (0 == mGrowBy) throw std::overflow_error("external buffer full");
 
-        mBuf    = pBuf;
-        mBufSiz = nNewSiz;
+            size_t nNewSiz = mBufSiz + roundup(a_nMinBytes, mGrowBy);
+            char * pBuf = (char *) malloc(nNewSiz);
+            if (!pBuf) throw std::bad_alloc();
+
+            memcpy(pBuf, mBuf, mBufLen);
+            mBuf    = pBuf;
+            mBufSiz = nNewSiz;
+            mIsExt  = false;
+        }
+        else {
+            size_t nNewSiz = mBufSiz + roundup(a_nMinBytes, mGrowBy);
+            char * pBuf = (char *) realloc(mBuf, nNewSiz);
+            if (!pBuf) throw std::bad_alloc();
+            mBuf    = pBuf;
+            mBufSiz = nNewSiz;
+        }
     }
     return mBuf + mBufLen;
 }
@@ -187,6 +203,21 @@ size_t
 ReadWriteBuffer::GetReadSize() const
 {
     return mBufLen - mBufIdx;
+}
+
+void 
+ReadWriteBuffer::ReadBytes(
+    void * a_pBuf, 
+    size_t a_nBufLen
+    )
+{
+    if (GetReadSize() < a_nBufLen) {
+        throw std::invalid_argument("a_nBufLen");
+    }
+
+    const char * pBuf = GetReadBuffer();
+    memcpy(a_pBuf, pBuf, a_nBufLen);
+    CommitReadBytes(a_nBufLen);
 }
 
 void
