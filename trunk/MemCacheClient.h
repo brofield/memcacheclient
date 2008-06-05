@@ -89,6 +89,9 @@ if (req.mResult == MCERR_OK) ...</pre>
 
 #ifndef INCLUDED_MemCacheClient
 #define INCLUDED_MemCacheClient
+#if defined(_MSC_VER) && (_MSC_VER >= 1020)
+# pragma once
+#endif
 
 #ifndef WIN32
 # include <stdint.h>
@@ -155,6 +158,7 @@ public:
             mCas    = 0;
             mResult = MCERR_OK;
             mData.SetEmpty();
+            mContext = NULL;
         }
 
     public:
@@ -195,11 +199,13 @@ public:
             from the server for get requests. 
          */
         ReadWriteBuffer mData;
+        /*! @brief User managed context for this request. */
+        void * mContext;
     };
 
 public:
     /*! @brief Maximum number of request objects in a single call */
-    const static int MAX_REQUESTS = 20;
+    const static int MAX_REQUESTS = 50;
 
     /*! @brief Initialise the memcached client */
     MemCacheClient();

@@ -8,6 +8,9 @@
 
 #ifndef INCLUDED_ReadWriteBuffer
 #define INCLUDED_ReadWriteBuffer
+#if defined(_MSC_VER) && (_MSC_VER >= 1020)
+# pragma once
+#endif
 
 // ----------------------------------------------------------------------------
 // ReadWriteBuffer
@@ -69,10 +72,13 @@ public:
         @param a_pBuf       Buffer to use as external store.
         @param a_nBufSiz    Maximum size of the buffer for writing.
         @param a_nBufLen    Current length of readable data in buffer.
+        @param a_nGrowBy    When 0, running out of space in the buffer throws
+                            an exception. When > 0, the buffer is automatically
+                            converted to an internal buffer with this growby value.
 
         @throw std::invalid_argument
     */
-    void SetExternalBuffer(void * a_pBuf, size_t a_nBufSiz, size_t a_nBufLen = 0); // throw std::invalid_argument 
+    void SetExternalBuffer(void * a_pBuf, size_t a_nBufSiz, size_t a_nBufLen = 0, size_t a_nGrowBy = 0); // throw std::invalid_argument 
 
     /*! @brief Replace the current buffer with an internal growable buffer. 
         
@@ -96,8 +102,9 @@ public:
                             without resizing it. The available bytes for writing can
                             be determined via GetWriteSize().
 
-        @throw std::overflow_error  when an external buffer is used and a_nMinBytes is 
-                                    not available.
+        @throw std::overflow_error  when an external buffer is used, conversion to an
+                                    internal buffer on overflow is disabled, and 
+                                    a_nMinBytes is not available in the buffer.
         @throw std::bad_alloc       when using an internal buffer and there was an out
                                     of memory error on resizing.
 
@@ -167,6 +174,17 @@ public:
         @return number of bytes available for reading 
     */
     size_t GetReadSize() const;
+    /*! @brief Read the data from the buffer. 
+    
+        This function is a simple wrapper around calls to GetReadSize, GetReadBuffer, 
+        memcpy, CommitReadBytes. 
+
+        @param a_pBuf       Location for the buffer data to be copied to
+        @param a_nBufLen    Length of the data in bytes to copy
+
+        @throw std::invalid_argument    not enough bytes in the buffer
+     */
+    void ReadBytes(void * a_pBuf, size_t a_nBufLen); // throw std::invalid_argument
 
     /*! @brief Compact the buffer.
     
@@ -182,7 +200,8 @@ private:
     size_t mBufSiz; //!< max buf size
     size_t mBufLen; //!< committed writes
     size_t mBufIdx; //!< committed reads
-    size_t mGrowBy; //!< external buffer = 0, internal buffer = growby rate
+    size_t mGrowBy; //!< growby rate
+    bool   mIsExt;  //!< is this an external buffer?
     char * mBuf;    //!< buffer
 };
 
