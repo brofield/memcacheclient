@@ -630,7 +630,7 @@ MemCacheClient::CreateKeyHash(
     assert(sizeof(output.as_char) == sizeof(output.as_long));
 
     md5(a_pszKey, (long) strlen(a_pszKey), output.as_char);
-    return output.as_long[0];
+    return output.as_long[3];
 }
 
 MemCacheClient::Server *
