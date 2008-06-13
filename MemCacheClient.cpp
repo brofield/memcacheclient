@@ -535,8 +535,8 @@ MemCacheClient::AddServer(
     string_t sKey;
     ConsistentHash entry(0, pServer);
     for (size_t n = 0; n < sizeof(rgpSalt)/sizeof(rgpSalt[0]); ++n) {
-        sKey  = rgpSalt[n];
-        sKey += pServer->GetAddress();
+        sKey  = pServer->GetAddress();
+        sKey += rgpSalt[n];
         entry.mHash = CreateKeyHash(sKey.data());
         m_rgServerHash.push_back(entry);
     }
