@@ -102,13 +102,13 @@
 			Filter="cpp;c;cxx;def;odl;idl;hpj;bat;asm;asmx"
 			UniqueIdentifier="{4FC737F1-C7A5-4376-A066-2A32D752A2FF}">
 			<File
-				RelativePath=".\md5.c">
-			</File>
-			<File
 				RelativePath=".\MemCacheClient.cpp">
 			</File>
 			<File
 				RelativePath=".\ReadWriteBuffer.cpp">
+			</File>
+			<File
+				RelativePath=".\sha1.c">
 			</File>
 		</Filter>
 		<Filter
@@ -116,13 +116,13 @@
 			Filter="h;hpp;hxx;hm;inl;inc;xsd"
 			UniqueIdentifier="{93995380-89BD-4b04-88EB-625FBE52EBFB}">
 			<File
-				RelativePath=".\md5.h">
-			</File>
-			<File
 				RelativePath=".\MemCacheClient.h">
 			</File>
 			<File
 				RelativePath=".\ReadWriteBuffer.h">
+			</File>
+			<File
+				RelativePath=".\sha1.h">
 			</File>
 		</Filter>
 	</Files>
