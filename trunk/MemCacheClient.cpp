@@ -2,6 +2,7 @@
     @version    1.0
     @brief      Basic memcached client
  */
+//#include "stdafx.h"
 
 /*! @cond IGNORE */
 #ifdef WIN32
@@ -44,7 +45,7 @@
 #include <cassert>
 
 #include "MemCacheClient.h"
-#include "md5.h"
+#include "sha1.h"
 
 /*! @brief Minimum period of time between connection attempts to a server.
 
@@ -622,15 +623,18 @@ MemCacheClient::CreateKeyHash(
     const char * a_pszKey
     )
 {
+    const size_t LONG_COUNT = SHA1_DIGEST_LENGTH / sizeof(unsigned long);
+    
     union {
-        char          as_char[16];
-        unsigned long as_long[4];
+        sha1_byte     as_char[SHA1_DIGEST_LENGTH];
+        unsigned long as_long[LONG_COUNT];
     } output;
-    assert(sizeof(output.as_char) == MD5_HASHSIZE);
-    assert(sizeof(output.as_char) == sizeof(output.as_long));
 
-    md5(a_pszKey, (long) strlen(a_pszKey), output.as_char);
-    return output.as_long[3];
+    assert(sizeof(output.as_char) == SHA1_DIGEST_LENGTH);
+    assert(sizeof(output.as_long) == SHA1_DIGEST_LENGTH);
+
+    SHA1(output.as_char, (const sha1_byte *) a_pszKey, (unsigned int) strlen(a_pszKey));
+    return output.as_long[LONG_COUNT-1];
 }
 
 MemCacheClient::Server *
