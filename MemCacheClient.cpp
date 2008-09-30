@@ -1,5 +1,5 @@
 /*! @file       MemCacheClient.cpp
-    @version    1.1
+    @version    1.2
     @brief      Basic memcached client
  */
 //#include "stdafx.h"
