@@ -1,5 +1,5 @@
 /*! @file       MemCacheClient.h
-    @version    1.1
+    @version    1.2
     @brief      Basic memcached client
  */
 /*! @mainpage
