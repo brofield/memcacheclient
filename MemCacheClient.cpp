@@ -1,5 +1,5 @@
 /*! @file       MemCacheClient.cpp
-    @version    1.0
+    @version    1.1
     @brief      Basic memcached client
  */
 //#include "stdafx.h"
@@ -445,13 +445,11 @@ MemCacheClient::Server::Connect(
     time_t nNow;
 #ifdef WIN32
     nNow = GetTickCount();
-    if (nNow - mLastConnect < MEMCACHECLIENT_RECONNECT_SEC * 1000) {
+    if (nNow - mLastConnect < MEMCACHECLIENT_RECONNECT_SEC * 1000) return false;
 #else
     time(&nNow);
-    if (nNow - mLastConnect < MEMCACHECLIENT_RECONNECT_SEC) {
+    if (nNow - mLastConnect < MEMCACHECLIENT_RECONNECT_SEC) return false;
 #endif
-        return false;
-    }
     mLastConnect = nNow;
     
     return ServerSocket::Connect(mIp, mPort, a_nTimeout);
@@ -793,6 +791,19 @@ MemCacheClient::Combine(
     return nResponses;
 }
 
+void
+MemCacheClient::ReceiveLine(
+    Server *    a_pServer, 
+    string_t &  a_sValue 
+    )
+{
+    register char c;
+    a_sValue = (c = a_pServer->GetByte());
+    while (c != '\n') {
+        a_sValue += (c = a_pServer->GetByte());
+    }
+}
+
 int 
 MemCacheClient::HandleGetResponse(
     Server *        a_pServer, 
@@ -805,10 +816,7 @@ MemCacheClient::HandleGetResponse(
     string_t sValue;
     for (;;) {
         // get the value
-        sValue = a_pServer->GetByte();
-        while (sValue[sValue.length()-1] != '\n') {
-            sValue += a_pServer->GetByte();
-        }
+        ReceiveLine(a_pServer, sValue);
         if (sValue == "END\r\n") break;
 
         // if it isn't a value then we are in a bad state
@@ -885,10 +893,7 @@ MemCacheClient::HandleDelResponse(
         if (pItem->mResult == MCERR_NOREPLY) continue;
 
         // get the value
-        sValue = a_pServer->GetByte();
-        while (sValue[sValue.length()-1] != '\n') {
-            sValue += a_pServer->GetByte();
-        }
+        ReceiveLine(a_pServer, sValue);
 
         // success
         if (sValue == "DELETED\r\n") {
@@ -1048,10 +1053,7 @@ MemCacheClient::HandleStoreResponse(
 {
     // get the value
     string_t sValue;
-    sValue = a_pServer->GetByte();
-    while (sValue[sValue.length()-1] != '\n') {
-        sValue += a_pServer->GetByte();
-    }
+    ReceiveLine(a_pServer, sValue);
 
     // success
     if (sValue == "STORED\r\n") {

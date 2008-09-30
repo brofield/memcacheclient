@@ -1,5 +1,5 @@
 /*! @file       MemCacheClient.h
-    @version    1.0
+    @version    1.1
     @brief      Basic memcached client
  */
 /*! @mainpage
@@ -89,6 +89,7 @@ if (req.mResult == MCERR_OK) ...</pre>
 
 #ifndef INCLUDED_MemCacheClient
 #define INCLUDED_MemCacheClient
+
 #if defined(_MSC_VER) && (_MSC_VER >= 1020)
 # pragma once
 #endif
@@ -199,6 +200,7 @@ public:
             from the server for get requests. 
          */
         ReadWriteBuffer mData;
+
         /*! @brief User managed context for this request. */
         void * mContext;
     };
@@ -569,6 +571,9 @@ private:
     
     /*! send multiple commands to all servers for commands that can be combined (get, gets, del) */
     int Combine(const char * a_pszType, MemRequest * a_rgItem, int a_nCount);
+
+    /*! receive a line of text ending with a \n character */
+    void ReceiveLine(Server * a_pServer, string_t & a_sValue);
 
     /*! handle a single get or gets response from a server */
     int HandleGetResponse(Server * a_pServer, MemRequest ** a_ppBegin, MemRequest ** a_ppEnd);
