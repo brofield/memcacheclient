@@ -17,6 +17,8 @@
 # define GetTimer()     GetTickCount()
 # define MilliSleep(x)  Sleep(x)
 #else
+# include <time.h>
+# include <sys/time.h>
 inline static u_long GetTimer() {
     struct timeval tv;
     struct timezone tz;
