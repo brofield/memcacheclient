@@ -851,7 +851,8 @@ MemCacheClient::HandleGetResponse(
 
         // extract the cas
         if (*pVal == ' ') {
-            pItem->mCas = STRTOUL64(++pVal, &pVal, 10);
+            ++pVal;
+            pItem->mCas = STRTOUL64(pVal, &pVal, 10);
             if (*pVal != '\r') throw ServerSocket::Exception("bad response");
         }
 
