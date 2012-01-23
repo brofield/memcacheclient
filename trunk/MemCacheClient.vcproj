@@ -102,6 +102,9 @@
 			Filter="cpp;c;cxx;def;odl;idl;hpj;bat;asm;asmx"
 			UniqueIdentifier="{4FC737F1-C7A5-4376-A066-2A32D752A2FF}">
 			<File
+				RelativePath=".\Matilda.cpp">
+			</File>
+			<File
 				RelativePath=".\MemCacheClient.cpp">
 			</File>
 			<File
@@ -110,11 +113,17 @@
 			<File
 				RelativePath=".\sha1.c">
 			</File>
+			<File
+				RelativePath=".\Socket.cpp">
+			</File>
 		</Filter>
 		<Filter
 			Name="Header Files"
 			Filter="h;hpp;hxx;hm;inl;inc;xsd"
 			UniqueIdentifier="{93995380-89BD-4b04-88EB-625FBE52EBFB}">
+			<File
+				RelativePath=".\Matilda.h">
+			</File>
 			<File
 				RelativePath=".\MemCacheClient.h">
 			</File>
@@ -123,6 +132,9 @@
 			</File>
 			<File
 				RelativePath=".\sha1.h">
+			</File>
+			<File
+				RelativePath=".\Socket.h">
 			</File>
 		</Filter>
 	</Files>

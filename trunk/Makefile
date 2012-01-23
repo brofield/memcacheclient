@@ -2,7 +2,7 @@ CC=g++
 CFLAGS=-Wall
 CPPFLAGS=-Wall
 
-OBJS=TestMemCacheClient.o MemCacheClient.o ReadWriteBuffer.o sha1.o
+OBJS=TestMemCacheClient.o MemCacheClient.o ReadWriteBuffer.o Socket.o Matilda.o sha1.o
 
 all: $(OBJS)
 	$(CC) -o TestMemCacheClient $(OBJS)
