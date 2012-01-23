@@ -1,339 +1,59 @@
 /*! @file       MemCacheClient.cpp
-    @version    1.2
+    @version    2.0
     @brief      Basic memcached client
  */
 //#include "stdafx.h"
 
-/*! @cond IGNORE */
-#ifdef WIN32
-# pragma warning(disable: 4127 4702) // C4127: conditional expression is constant, C4702: unreachable code
-# pragma comment(lib, "ws2_32.lib")
-# include <winsock2.h>
-# define GetLastSocketError()   WSAGetLastError()
-# define EWOULDBLOCK            WSAEWOULDBLOCK
-# define snprintf               _snprintf
-# define SPRINTF_UINT64         "%I64u"
-# define STRTOUL64              _strtoui64
-#else
-# include <unistd.h>
-# include <sys/types.h>
-# include <sys/time.h>
-# include <sys/socket.h>
-# include <sys/ioctl.h>
-# include <arpa/inet.h>
-# include <netinet/in.h>
-# include <errno.h>
-# define SOCKET                 int
-# define INVALID_SOCKET         -1
-# define SOCKET_ERROR           -1
-# define closesocket            close
-# define ioctlsocket            ioctl
-# define GetLastSocketError()   errno
-# ifndef EWOULDBLOCK
-#  define EWOULDBLOCK           EAGAIN
-# endif
-# define SPRINTF_UINT64         "%llu"
-# define STRTOUL64              strtoull
-#endif
-/*! @endcond */
-
-#include <stdio.h>
-#include <string.h>
-
-#include <vector>
 #include <algorithm>
-#include <cassert>
 
-#include "MemCacheClient.h"
+#ifdef _WIN32
+# include <winsock2.h>
+# define strtoull _strtoui64
+#endif
+
+// lib
+#ifdef CROSSBASE_API
+# include <xplatform/timer.h>
+# include <Trace/cltrace.h>
+using namespace cl;
+#else
+# include "Matilda.h"
+#endif
+
+// If OpenSSL is available, better to use it
+//#include <openssl/sha.h>
 #include "sha1.h"
-
-/*! @brief Minimum period of time between connection attempts to a server.
-
-    After either an attempt or an actual connection to a server, there will
-    be a minimum of this period before we attempt to connect again. 
- */    
-#define MEMCACHECLIENT_RECONNECT_SEC    60
-
-///////////////////////////////////////////////////////////////////////////////
-// ServerSocket
-//
-
-/*! @brief Socket connection, disconnection, and buffered data receives. */
-class ServerSocket
-{
-private:
-    const static int MAXBUF = 1024; //!< size of internal data buffer
-
-    SOCKET  mSocket;        //!< socket being abstracted
-    char    mBuf[MAXBUF];   //!< internal data buffer
-    int     mIdx;           //!< current read index for mBuf
-    int     mBufLen;        //!< current end index for mBuf
-
-private:
-    /*! @brief copy constructor is disabled */
-    ServerSocket(const ServerSocket &); 
-    /*! @brief copy operator is disabled */
-    ServerSocket & operator=(const ServerSocket &); 
-    /*! @brief Receive data into a buffer with as many bytes as possible up 
-        to the size of the buffer.
-        @param a_pszBuf     Buffer to be filled
-        @param a_nBufSiz    Maximum number of bytes to receive
-        @return number of bytes actually received
-     */
-    int ReceiveBytes(char * a_pszBuf, int a_nBufSiz);
-
-public:
-    /*! @brief Exception thrown on any send or receive error */
-    class Exception : public std::exception { 
-    public:
-        const char * mWhat; //!< error message 
-        /*! constructor
-            @param aWhat optional message 
-         */
-        Exception(const char * aWhat = "") { mWhat = aWhat; }
-    };
-
-public:
-    /*! @brief constructor */
-    ServerSocket();
-
-    /*! @brief destructor */
-    ~ServerSocket(); 
-
-    /*! @brief connect the socket to an address
-        @param a_nIpAddress Server IP address as returned from inet_addr
-        @param a_nPort      Server port
-        @param a_nTimeout   Connection timeout period in milliseconds
-     */
-    bool Connect(unsigned long a_nIpAddress, int a_nPort, int a_nTimeout);
-
-    /*! @brief Determine if we are currently connected to a server */
-    inline bool IsConnected() const { return mSocket != INVALID_SOCKET; }
-
-    /*! @brief Disconnect from the server */
-    void Disconnect();
-
-    /*! @brief Send the supplied bytes to the server. 
-    
-        A blocking send is used, so the function will block until either 
-        all bytes are sent or an error occurs. 
-        
-        @param a_pszBuf     Bytes to send to the server
-        @param a_nBufSiz    Number of bytes to send to the server
-        @throw Exception on socket error
-     */
-    void SendBytes(const char * a_pszBuf, size_t a_nBufSiz); // throw Exception
-
-    /*! @brief Receive a block of data from the server. 
-        @param a_pszBuf     Buffer to receive the data into
-        @param a_nBufSiz    Maximum number of bytes to be received
-        @return number of bytes that were actually received
-        @throw Exception on socket error
-     */
-    int GetBytes(char * a_pszBuf, int a_nBufSiz); // throw Exception
-
-    /*! @brief Receive and discard bytes.
-        @param a_nBytes Number of bytes to be received and ignored.
-        @throw Exception on socket error
-     */
-    void DiscardBytes(int a_nBytes); // throw Exception
-
-    /*! @brief Receive a single byte
-        @return received byte
-        @throw Exception on socket error
-     */
-    inline char GetByte() { 
-        if (mIdx >= mBufLen) {
-            mIdx = 0;
-            mBufLen = ReceiveBytes(mBuf, MAXBUF);
-        }
-        return mBuf[mIdx++];
-    }
-};
-
-ServerSocket::ServerSocket() 
-    : mSocket(INVALID_SOCKET)
-    , mIdx(0)
-    , mBufLen(0) 
-{ }
-
-ServerSocket::~ServerSocket() 
-{
-    Disconnect();
+#ifndef HEADER_SHA_H //openssl
+#define SHA_DIGEST_LENGTH   SHA1_DIGEST_LENGTH
+void SHA1(const unsigned char *d, size_t n, unsigned char *md) {
+    SHA1((sha1_byte*)md, (const sha1_byte*)d, (unsigned int)n);
 }
+#endif
 
-void 
-ServerSocket::Disconnect()
-{
-    if (mSocket == INVALID_SOCKET) {
-        return;
-    }
-    
-    // shutdown SD_SEND
-    shutdown(mSocket, 1);
-
-    int nTimeout = 10;
-    setsockopt(mSocket, SOL_SOCKET, SO_RCVTIMEO, 
-        (const char*) &nTimeout, sizeof(nTimeout));
-
-    // read all pending data
-    int rc = 1;
-    while (rc != SOCKET_ERROR && rc > 0) {
-        rc = recv(mSocket, mBuf, MAXBUF, 0);
-    }
-
-    // done
-    closesocket(mSocket);
-    mSocket = INVALID_SOCKET;
-
-    // clear the buffer
-    mIdx = mBufLen = 0; 
-}
-
-bool 
-ServerSocket::Connect(
-    unsigned long   a_nIpAddress, 
-    int             a_nPort, 
-    int             a_nTimeout
-    )
-{
-    Disconnect();
-
-    struct sockaddr_in server;
-    server.sin_family = AF_INET;
-    server.sin_port = htons((short)a_nPort);
-    server.sin_addr.s_addr = a_nIpAddress;
-
-    SOCKET s = socket(AF_INET, SOCK_STREAM, 0);
-    if (s == INVALID_SOCKET) return false;
-
-    try {
-        // non-blocking for connect
-        u_long value = 1;
-        int rc = ioctlsocket(s, FIONBIO, &value);
-        if (rc != 0) throw rc;
-
-        rc = connect(s, (struct sockaddr *) &server, sizeof(server));
-        if (rc != 0) {
-            if (rc != SOCKET_ERROR || GetLastSocketError() != EWOULDBLOCK) throw rc;
-
-            // non-blocking wait
-            struct timeval timeout;
-            timeout.tv_sec  =  a_nTimeout / 1000;
-            timeout.tv_usec = (a_nTimeout % 1000) * 1000;
-            fd_set wr; FD_ZERO(&wr); FD_SET(s, &wr);
-            fd_set ex; FD_ZERO(&ex); FD_SET(s, &ex);
-            rc = select(0, NULL, &wr, &ex, &timeout);
-            if (rc == 0 || rc == SOCKET_ERROR || FD_ISSET(s, &ex)) throw rc;
-        }
-
-        // blocking
-        value = 0;
-        rc = ioctlsocket(s, FIONBIO, &value);
-        if (rc != 0) throw rc;
-
-        rc = setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, 
-            (const char*) &a_nTimeout, sizeof(a_nTimeout));
-        if (rc != 0) throw rc;
-
-        rc = setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, 
-            (const char*) &a_nTimeout, sizeof(a_nTimeout));
-        if (rc != 0) throw rc;
-
-        mSocket = s;
-        return true;
-    }
-    catch (int) {
-        closesocket(s);
-        return false;
-    }
-}
-
-void
-ServerSocket::SendBytes(
-    const char *    a_pszBuf, 
-    size_t          a_nBufSiz
-    )
-{
-    // blocking send, will return the number of bytes sent or 
-    // it is an error
-    size_t n = send(mSocket, a_pszBuf, (int) a_nBufSiz, 0);
-    if (n == a_nBufSiz) return;
-
-    // on error disconnect and throw SocketException
-    Disconnect();
-    throw ServerSocket::Exception("send error");
-}
-
-int 
-ServerSocket::ReceiveBytes(
-    char *  a_pszBuf, 
-    int     a_nBufSiz
-    ) 
-{
-    int n = recv(mSocket, a_pszBuf, a_nBufSiz, 0);
-    if (n > 0) return n;
-
-    // on error disconnect and throw SocketException
-    Disconnect();
-    throw ServerSocket::Exception("recv error");
-}
-
-int 
-ServerSocket::GetBytes(
-    char *  a_pszBuf, 
-    int     a_nBufSiz
-    ) 
-{
-    if (mIdx < mBufLen) {
-        int nLen = mBufLen - mIdx;
-        if (nLen > a_nBufSiz) nLen = a_nBufSiz;
-        memcpy(a_pszBuf, mBuf + mIdx, nLen);
-        mIdx += nLen;
-        if (mIdx == mBufLen) mIdx = mBufLen = 0;
-        return nLen;
-    }
-    return ReceiveBytes(a_pszBuf, a_nBufSiz);
-}
-
-void 
-ServerSocket::DiscardBytes(
-    int     a_nBytes
-    ) 
-{
-    while (a_nBytes > 0) {
-        if (mIdx == mBufLen) {
-            mIdx = 0;
-            mBufLen = ReceiveBytes(mBuf, MAXBUF);
-        }
-
-        int nLen = mBufLen - mIdx;
-        if (nLen > a_nBytes) {
-            mIdx += a_nBytes;
-            break;
-        }
-
-        a_nBytes -= nLen;
-        mIdx = mBufLen;
-    }
-}
+// local
+#include "Socket.h"
+#include "MemCacheClient.h"
 
 ///////////////////////////////////////////////////////////////////////////////
 
 /*! @brief Abstraction of a server connection */
-class MemCacheClient::Server : public ServerSocket
+class MemCacheClient::Server : public Socket
 {
-    /*! @brief max length of a server address */
-    const static size_t ADDRLEN = sizeof("aaa.bbb.ccc.ddd:PPPPP");
-
 public:
     /*! @brief constructor */
-    Server() : mIp(INADDR_NONE), mPort(0), mLastConnect(0) { mAddress[0] = 0; }
+    Server(const ClTrace & aTrace) 
+        : Socket(aTrace)
+        , mIp(INADDR_NONE)
+        , mPort(0)
+        , mLastConnect(0) 
+    { 
+        mAddress[0] = 0; 
+    }
     
     /*! @brief copy constructor 
         @param rhs server to copy address of
      */
-    Server(const Server & rhs) { operator=(rhs); }
+    Server(const Server & rhs) : Socket(rhs.mTrace) { operator=(rhs); }
     
     /*! @brief destructor */
     ~Server() { }
@@ -356,16 +76,18 @@ public:
     inline bool operator!=(const Server & rhs) const { return !operator==(rhs); }
     
     /*! @brief Set the listen address for this server 
-        @param a_pszServer Listen address in IP:PORT format
+        @param aServer Listen address in IP:PORT format
         @return true if listen address was correctly parsed
      */
-    bool Set(const char * a_pszServer); 
+    bool Set(const char * aServer); 
     
+    enum ConnectResult { CONNECT_SUCCESS, CONNECT_FAILED, CONNECT_WAITING };
+
     /*! @brief Attempt to connect to the server.
-        @param a_nTimeout Timeout for connection in milliseconds 
+        @param aTimeout Timeout for connection in milliseconds 
         @return true if connection was successful
      */
-    bool Connect(int a_nTimeout);
+    ConnectResult Connect(size_t aTimeout, size_t aRetryPeriod);
     
     /*! @brief Get the string representation of this server listen address.
     
@@ -376,11 +98,17 @@ public:
      */
     inline const char * GetAddress() const { return mAddress; }
 
+    /*! @brief Get the listen port for this server. */
+    inline int GetPort() const { return mPort; }
+
 private:
+    /*! @brief max length of a server address */
+    const static size_t ADDRLEN = sizeof("aaa.bbb.ccc.ddd:PPPPP");
+
     char            mAddress[ADDRLEN];  //!< server IP:PORT as string 
     unsigned long   mIp;                //!< server IP address
     int             mPort;              //!< server port
-    time_t          mLastConnect;       //!< last connection time
+    unsigned long   mLastConnect;       //!< last connection time
 };
 
 MemCacheClient::Server & 
@@ -388,10 +116,13 @@ MemCacheClient::Server::operator=(
     const Server & rhs
     ) 
 {
-    strcpy(mAddress, rhs.mAddress);
-    mIp   = rhs.mIp;
-    mPort = rhs.mPort;
-    mLastConnect = 0;
+    if (this != &rhs) {
+        mTrace = rhs.mTrace;
+        strcpy(mAddress, rhs.mAddress);
+        mIp   = rhs.mIp;
+        mPort = rhs.mPort;
+        mLastConnect = 0;
+    }
     return *this;
 }
 
@@ -405,23 +136,24 @@ MemCacheClient::Server::operator==(
 
 bool 
 MemCacheClient::Server::Set(
-    const char * a_pszServer
+    const char * aServer
     ) 
 {
-    if (!a_pszServer || !*a_pszServer) return false;
+    if (!aServer || !*aServer) return false;
 
-    size_t nLen = strlen(a_pszServer);
-    if (nLen >= ADDRLEN) return false; 
-    strcpy(mAddress, a_pszServer);
+    char server[200];
+    size_t nLen = strlen(aServer);
+    if (nLen >= sizeof(server)) return false; 
+    strcpy(server, aServer);
 
     mPort = 11211;
-    char * pszPort = strchr(mAddress, ':');
+    char * pszPort = strchr(server, ':');
     if (pszPort) {
         mPort = atoi(pszPort + 1);
         *pszPort = 0;
     }
 
-    mIp = inet_addr(mAddress);
+    mIp = inet_addr(server);
     if (mIp == INADDR_NONE) return false;
 
     struct in_addr addr;
@@ -431,58 +163,91 @@ MemCacheClient::Server::Set(
     return true;
 }
 
-bool 
+MemCacheClient::Server::ConnectResult
 MemCacheClient::Server::Connect(
-    int a_nTimeout
+    size_t aTimeout,
+    size_t aRetryPeriod
     ) 
 {
     // already connected? do nothing
-    if (IsConnected()) {
-        return true;
+    if (Socket::IsConnected()) {
+        return CONNECT_SUCCESS;
     }
 
-    // only try to re-connect to a broken server occasionally
-    time_t nNow;
-#ifdef WIN32
-    nNow = GetTickCount();
-    if (nNow - mLastConnect < MEMCACHECLIENT_RECONNECT_SEC * 1000) return false;
-#else
-    time(&nNow);
-    if (nNow - mLastConnect < MEMCACHECLIENT_RECONNECT_SEC) return false;
-#endif
+    struct in_addr addr;
+    addr.s_addr = mIp;
+    const char * pszAddress = inet_ntoa(addr);
+
+    // only try to re-connect to a broken server occasionally if it is optional. 
+    // a required server will be attempted every time.
+    unsigned long nNow = xplatform::GetCurrentTickCount();
+    if (mLastConnect && (nNow - mLastConnect) < aRetryPeriod) {
+        mTrace.Trace(CLDEBUG, "Connection attempt to %s:%d ignored (last failed attempt %lu seconds ago)",
+            pszAddress, mPort, (nNow - mLastConnect) / 1000);
+        return CONNECT_WAITING;
+    }
     mLastConnect = nNow;
-    
-    return ServerSocket::Connect(mIp, mPort, a_nTimeout);
+
+    try {
+        // use a decent size socket buffer 
+        mBufferSize = 32 * 1024;
+        mConnectTimeout = (int) aTimeout;
+        mSendTimeout = (int) aTimeout;
+        mRecvTimeout = (int) aTimeout;
+        Socket::Connect(pszAddress, mPort);
+    }
+    catch (const Socket::Exception &) { 
+        // message already logged
+        return CONNECT_FAILED;
+    }
+
+    return CONNECT_SUCCESS;
 }
+
+///////////////////////////////////////////////////////////////////////////////
+// ConsistentHash
+//
+
+bool MemCacheClient::ConsistentHash::operator<(const MemCacheClient::ConsistentHash & rhs) const 
+{ 
+    if (mHash != rhs.mHash) {
+        return mHash < rhs.mHash; 
+    }
+
+    // in case we get multiple servers with the same hash, compare the actual server
+    // addresses to get a consistent ordering
+    if (mServer != rhs.mServer) {
+        return strcmp(mServer->GetAddress(), rhs.mServer->GetAddress()) < 0;
+    }
+
+    return mEntry == rhs.mEntry;
+}
+
+/*! Match a server by comparing pointers */
+struct MemCacheClient::ConsistentHash::MatchServer
+{
+    /*! server being searched for */
+    MemCacheClient::Server * mServer; 
+
+    /*! constructor 
+        @param aServer server to search for
+     */
+    MatchServer(MemCacheClient::Server * aServer) : mServer(aServer) { }
+
+    /*! compare current entry against search entry 
+        @param rhs  entry to compare
+     */
+    bool operator()(const ConsistentHash & rhs) const { return rhs.mServer == mServer; }
+};
 
 ///////////////////////////////////////////////////////////////////////////////
 // MemCacheClient
 
 MemCacheClient::MemCacheClient()
-    : m_nTimeoutMs(1000)
+    : mTrace("MEMCACHE")
+    , mTimeoutMs(1000)
+    , mRetryMs(300 * 1000)
 {
-}
-
-MemCacheClient::MemCacheClient(
-    const MemCacheClient & rhs
-    ) 
-{
-    operator=(rhs);
-}
-
-MemCacheClient & 
-MemCacheClient::operator=(
-    const MemCacheClient & rhs
-    )
-{
-    m_nTimeoutMs = rhs.m_nTimeoutMs;
-    ClearServers();
-    m_rgpServer.resize(rhs.m_rgpServer.size());
-    for (size_t n = 0; n < rhs.m_rgpServer.size(); ++n) {
-        m_rgpServer[n] = new Server(*rhs.m_rgpServer[n]);
-        if (!m_rgpServer[n]) throw std::bad_alloc();
-    }
-    return *this;
 }
 
 MemCacheClient::~MemCacheClient()
@@ -493,38 +258,61 @@ MemCacheClient::~MemCacheClient()
 void
 MemCacheClient::ClearServers()
 {
-    for (size_t n = 0; n < m_rgpServer.size(); ++n) {
-        delete m_rgpServer[n];
+    for (size_t n = 0; n < mServer.size(); ++n) {
+        delete mServer[n];
     }
-    m_rgpServer.clear();
+    mServer.clear();
+}
+
+const char * 
+MemCacheClient::ConvertResult(
+    MCResult aResult
+    ) 
+{
+    switch (aResult) {
+    case MCERR_OK:        return "MCERR_OK";
+    case MCERR_NOREPLY:   return "MCERR_NOREPLY";
+    case MCERR_NOTSTORED: return "MCERR_NOTSTORED";
+    case MCERR_NOTFOUND:  return "MCERR_NOTFOUND";
+    case MCERR_NOSERVER:  return "MCERR_NOSERVER";
+    default:              return "(unknown)";
+    }
 }
 
 bool 
 MemCacheClient::AddServer(
-    const char * a_pszServer
+    const char *    aServerAddress,
+    const char *    aServerName,
+    unsigned        aServices
     )
 {
+    if (!aServerName) {
+        aServerName = aServerAddress;
+    }
+
     // if we the server address is valid then we allow the server 
     // to be added. All servers being added are assumed to be available
-    // or to be soon made available. Uncontactable servers will cause
-    // extra load on the database because the caching will not be available.
-    Server * pServer = new Server;
-    if (!pServer->Set(a_pszServer)) {
+    // or to be soon made available. 
+    Server * pServer = new Server(mTrace);
+    if (!pServer->Set(aServerAddress)) {
+        mTrace.Trace(CLERROR, "Ignoring invalid server: %s (%s)", 
+            aServerAddress, aServerName);
         delete pServer;
         return false;
     }
-    for (size_t n = 0; n < m_rgpServer.size(); ++n) {
-        if (*pServer == *m_rgpServer[n]) return true; // already have it
+    for (size_t n = 0; n < mServer.size(); ++n) {
+        if (*pServer == *mServer[n]) {
+            mTrace.Trace(CLERROR, "Ignoring duplicate server: %s (%s)", 
+                aServerAddress, aServerName);
+            return true; // already have it
+        }
     }
-    m_rgpServer.push_back(pServer);
+    mServer.push_back(pServer);
 
     // for each salt we generate a string hash for the consistent hash 
     // table. To ensure stability of the hashing for multiple servers, 
     // we want to have a number of entries for each server. 
     static const char * rgpSalt[] = {
-        "{DD4C855D-7548-4804-8F1A-166CDBACEFE7}",
-        "{9BF02198-1D29-4aa3-9466-A4AF4372D5B1}",
-        "{0F20CD2F-ACF2-44bc-8CE3-54529D7B738D}",
         "{DEA60AAB-CFF9-4a20-A799-4E5E93369656}",
         "{C05167CC-57DA-40f2-9EB8-18F65E56FD21}",
         "{57939537-0966-49e7-B675-ACE63246BFA5}",
@@ -532,62 +320,66 @@ MemCacheClient::AddServer(
     };
 
     string_t sKey;
-    ConsistentHash entry(0, pServer);
+    ConsistentHash entry(0, pServer, aServices, 0);
     for (size_t n = 0; n < sizeof(rgpSalt)/sizeof(rgpSalt[0]); ++n) {
         sKey  = pServer->GetAddress();
         sKey += rgpSalt[n];
+        entry.mEntry++;
         entry.mHash = CreateKeyHash(sKey.data());
-        m_rgServerHash.push_back(entry);
+        mServerHash.push_back(entry);
     }
 
     // sort the vector so that we can binary search it
-    std::sort(m_rgServerHash.begin(), m_rgServerHash.end());
+    std::sort(mServerHash.begin(), mServerHash.end());
 
-#if 0
-    printf("\nSERVER RING (%d servers):\n", m_rgpServer.size());
-    for (size_t n = 0; n < m_rgServerHash.size(); ++n) {
-        printf("%08x = %s\n", m_rgServerHash[n].mHash,
-            m_rgServerHash[n].mServer->GetAddress());
-    }
-#endif
-
+    mTrace.Trace(CLINFO, "Adding server: %s (%s:%u), services: 0x%x",
+        aServerAddress, aServerName, pServer->GetPort(), aServices);
     return true;
 }
 
-/*! Match a server by comparing pointers */
-struct MemCacheClient::ConsistentHash::MatchServer
+void
+MemCacheClient::DumpTables()
 {
-    /*! server being searched for */
-    MemCacheClient::Server * mServer; 
-    /*! constructor 
-        @param aServer server to search for
-     */
-    MatchServer(MemCacheClient::Server * aServer) : mServer(aServer) { }
-    /*! compare current entry against search entry 
-        @param rhs  entry to compare
-     */
-    bool operator()(const ConsistentHash & rhs) const { return rhs.mServer == mServer; }
-};
+    // we need this information to ensure that different servers are
+    // using the same consistent hashing tables.
+    if (!mTrace.IsThisModuleTracing(CLDEBUG)) {
+        return;
+    }
+
+    std::string verify;
+    char buf[200];
+    mTrace.Trace(CLDEBUG, "Consistent Hash Server Ring (%u entries):", mServerHash.size());
+    for (size_t n = 0; n < mServerHash.size(); ++n) {
+        const ConsistentHash & server = mServerHash[n];
+        mTrace.Trace(CLDEBUG, "%2u: %08lx = %s (services: 0x%x, entry: %d)", 
+            n, server.mHash, server.mServer->GetAddress(), server.mServices, server.mEntry);
+        snprintf(buf, sizeof(buf), "%s>%d>%x>%lx>", server.mServer->GetAddress(), 
+            server.mEntry, server.mServices, server.mHash);
+        verify += buf;
+    }
+
+    mTrace.Trace(CLDEBUG, "Data verification code: %lx", CreateKeyHash(verify.c_str()));
+}
 
 bool 
 MemCacheClient::DelServer(
-    const char * a_pszServer
+    const char * aServer
     )
 {
-    Server test;
-    if (test.Set(a_pszServer)) {
-        std::vector<Server*>::iterator i = m_rgpServer.begin();
-        for (; i != m_rgpServer.end(); ++i) {
+    Server test(mTrace);
+    if (test.Set(aServer)) {
+        std::vector<Server*>::iterator i = mServer.begin();
+        for (; i != mServer.end(); ++i) {
             Server * pServer = *i;
             if (test != *pServer) continue;
 
             delete pServer;
-            m_rgpServer.erase(i);
+            mServer.erase(i);
             ConsistentHash::MatchServer server(pServer);
-            m_rgServerHash.erase(
-                std::partition(m_rgServerHash.begin(), m_rgServerHash.end(), server), 
-                m_rgServerHash.end());
-            std::sort(m_rgServerHash.begin(), m_rgServerHash.end());
+            mServerHash.erase(
+                std::partition(mServerHash.begin(), mServerHash.end(), server), 
+                mServerHash.end());
+            std::sort(mServerHash.begin(), mServerHash.end());
             return true;
         }
     }
@@ -598,67 +390,108 @@ MemCacheClient::DelServer(
 
 void 
 MemCacheClient::GetServers(
-    std::vector<string_t> & a_rgServers
+    std::vector<string_t> & aServers
     )
 {
-    a_rgServers.clear();
-    a_rgServers.reserve(m_rgpServer.size());
-    for (size_t n = 0; n < m_rgpServer.size(); ++n) {
-        a_rgServers.push_back(m_rgpServer[n]->GetAddress());
+    string_t address;
+    aServers.clear();
+    aServers.reserve(mServer.size());
+    for (size_t n = 0; n < mServer.size(); ++n) {
+        address = mServer[n]->GetAddress();
+        aServers.push_back(address);
     }
 }
 
 void 
 MemCacheClient::SetTimeout(
-    int a_nMilliseconds
+    size_t aTimeoutMs
     )
 {
-    m_nTimeoutMs = a_nMilliseconds;
+    mTimeoutMs = aTimeoutMs;
+}
+
+void 
+MemCacheClient::SetRetryPeriod(
+    size_t aRetryMs
+    )
+{
+    mRetryMs = aRetryMs;
 }
 
 unsigned long 
 MemCacheClient::CreateKeyHash(
-    const char * a_pszKey
+    const char * aKey
     )
 {
-    const size_t LONG_COUNT = SHA1_DIGEST_LENGTH / sizeof(unsigned long);
+    const size_t LONG_COUNT = SHA_DIGEST_LENGTH / sizeof(unsigned long);
     
     union {
-        sha1_byte     as_char[SHA1_DIGEST_LENGTH];
+        unsigned char as_char[SHA_DIGEST_LENGTH];
         unsigned long as_long[LONG_COUNT];
     } output;
 
-    assert(sizeof(output.as_char) == SHA1_DIGEST_LENGTH);
-    assert(sizeof(output.as_long) == SHA1_DIGEST_LENGTH);
+    CR_ASSERT(sizeof(output.as_char) == SHA_DIGEST_LENGTH);
+    CR_ASSERT(sizeof(output.as_long) == SHA_DIGEST_LENGTH);
 
-    SHA1(output.as_char, (const sha1_byte *) a_pszKey, (unsigned int) strlen(a_pszKey));
+    SHA1((const unsigned char *) aKey, (unsigned long) strlen(aKey), output.as_char);
     return output.as_long[LONG_COUNT-1];
 }
 
 MemCacheClient::Server *
 MemCacheClient::FindServer(
-    const string_t & a_sKey
+    const string_t & aKey,
+    unsigned aService
     )
 {
+    // in the tserver usage of this, the service must never be 0
+    if (aService == 0) {
+        mTrace.Trace(CLERROR, "FindServer: no service requested, supplied cache server may not be appropriate!!!");
+        CR_ASSERT(!"FindServer: no service requested, supplied cache server may not be appropriate!!!");
+    }
+
     // probably need some servers for this
-    if (m_rgServerHash.empty()) {
+    if (mServerHash.empty()) {
+        //mTrace.Trace(CLDEBUG, "FindServer: server hash is empty");
         return NULL;
     }
 
     // find the next largest consistent hash value above this key hash
-    ConsistentHash hash(CreateKeyHash(a_sKey.data()), NULL);
-    std::vector<ConsistentHash>::iterator iServer = 
-        std::lower_bound(m_rgServerHash.begin(), m_rgServerHash.end(), hash);
-    if (iServer == m_rgServerHash.end()) {
-        iServer = m_rgServerHash.begin();
+    ConsistentHash hash(CreateKeyHash(aKey.data()), NULL, 0, 0);
+    std::vector<ConsistentHash>::iterator iBegin = mServerHash.begin();
+    std::vector<ConsistentHash>::iterator iEnd = mServerHash.end();
+    std::vector<ConsistentHash>::iterator iCurr = std::lower_bound(iBegin, iEnd, hash);
+    if (iCurr == iEnd) iCurr = iBegin;
+
+    // now find the next server that handles this service
+    if (aService != 0) {
+        //int nSkipped = 0;
+        std::vector<ConsistentHash>::iterator iStart = iCurr;
+        while (!iCurr->services(aService)) {
+            //++nSkipped;
+            ++iCurr; 
+            if (iCurr == iEnd) iCurr = iBegin;
+            if (iCurr == iStart) {
+                mTrace.Trace(CLDEBUG, "FindServer: no server for required service: %u", aService);
+                return NULL;
+            }
+        }
+        //if (nSkipped > 0) mTrace.Trace(CLDEBUG, "skipped %d servers for service: %u", nSkipped, aService);
     }
 
     // ensure that this server is connected 
-    Server * pServer = iServer->mServer;
-    if (!pServer->Connect(m_nTimeoutMs)) {
+    Server * pServer = iCurr->mServer;
+    Server::ConnectResult rc = pServer->Connect(mTimeoutMs, mRetryMs);
+    switch (rc) {
+    case Server::CONNECT_SUCCESS:
+        //mTrace.Trace(CLDEBUG, "FindServer: using server %s", pServer->GetAddress());
+        return pServer;
+    case Server::CONNECT_WAITING:
+        return NULL;
+    default:
+    case Server::CONNECT_FAILED:
+        //mTrace.Trace(CLDEBUG, "FindServer: failed to connect to server %s", pServer->GetAddress());
         return NULL;
     }
-    return pServer;
 }
 
 /*! @brief Sort the requests into server order */
@@ -676,30 +509,44 @@ struct MemCacheClient::MemRequest::Sort
 
 int 
 MemCacheClient::Combine(
-    const char *    a_pszType,
-    MemRequest *    a_rgItem, 
-    int             a_nCount
+    const char *    aType,
+    MemRequest *    aItem, 
+    int             aCount
     )
 {
-	if (a_nCount < 1) return 0;
+    if (aCount < 1) {
+        mTrace.Trace(CLDEBUG, "%s: ignoring request for %d items",
+            aType, aCount);
+        return 0;
+    }
+    CR_ASSERT(*aType == 'g' || *aType == 'd'); // get, gets, del
 
     MemRequest * rgpItem[MAX_REQUESTS] = { NULL };
-    if (a_nCount > MAX_REQUESTS) return -1; // invalid args
+    if (aCount > MAX_REQUESTS) {
+        mTrace.Trace(CLDEBUG, "%s: ignoring request for all %d items (too many)", 
+            aType, aCount);
+        return -1; // invalid args
+    }
 
     // initialize and find all of the servers for these items
     int nItemCount = 0;
-    for (int n = 0; n < a_nCount; ++n) {
+    for (int n = 0; n < aCount; ++n) {
         // ensure that the key doesn't have a space in it
-        assert(NULL == strchr(a_rgItem[n].mKey.data(), ' '));
-        a_rgItem[n].mServer = FindServer(a_rgItem[n].mKey);
-        if (a_rgItem[n].mServer) {
-            rgpItem[nItemCount++] = &a_rgItem[n];
+        CR_ASSERT(NULL == strchr(aItem[n].mKey.data(), ' '));
+        aItem[n].mServer = FindServer(aItem[n].mKey, aItem[n].mService);
+        aItem[n].mData.SetEmpty();
+        if (aItem[n].mServer) {
+            rgpItem[nItemCount++] = &aItem[n];
         }
         else {
-            a_rgItem[n].mResult = MCERR_NOSERVER;
+            aItem[n].mResult = MCERR_NOSERVER;
         }
     }
-    if (nItemCount == 0) return 0;
+    if (nItemCount == 0) {
+        mTrace.Trace(CLDEBUG, "%s: ignoring request for all %d items (no servers available)", 
+            aType, aCount);
+        return 0;
+    }
 
     // sort all requests into server order
     const static MemRequest::Sort sortOnServer = MemRequest::Sort();
@@ -712,9 +559,11 @@ MemCacheClient::Combine(
     while (nItem < nItemCount) {
         for (nNext = nItem; nNext < nItemCount; ++nNext) {
             if (rgpItem[nItem]->mServer != rgpItem[nNext]->mServer) break;
+            CR_ASSERT(*aType == 'g' || *aType == 'd');
+            rgpItem[nNext]->mData.SetEmpty();
 
             // create get request for all keys on this server
-            if (*a_pszType == 'g') {
+            if (*aType == 'g') {
                 if (nNext == nItem) sRequest = "get";
                 else sRequest.resize(sRequest.length() - 2);
                 sRequest += ' ';
@@ -723,7 +572,7 @@ MemCacheClient::Combine(
                 rgpItem[nNext]->mResult = MCERR_NOTFOUND;
             }
             // create del request for all keys on this server
-            else if (*a_pszType == 'd') {
+            else if (*aType == 'd') {
                 // delete <key> [<time>] [noreply]\r\n
                 sRequest += "delete ";
                 sRequest += rgpItem[nNext]->mKey;
@@ -746,7 +595,9 @@ MemCacheClient::Combine(
             rgpItem[nItem]->mServer->SendBytes(
                 sRequest.data(), sRequest.length());
         }
-        catch (const ServerSocket::Exception &) {
+        catch (const Socket::Exception & e) {
+            mTrace.Trace(CLINFO, "%s: request error '%s' at %s, marking requests as NOSERVER",
+                aType, e.mDetail, rgpItem[nItem]->mServer->GetAddress());
             for (int n = nItem; n < nNext; ++n) {
                 rgpItem[n]->mServer = NULL;
                 rgpItem[n]->mResult = MCERR_NOSERVER;
@@ -767,18 +618,20 @@ MemCacheClient::Combine(
         // receive the responses. any socket error causes the server connection 
         // to be dropped, so we return errors for all requests using that server.
         try {
-            if (*a_pszType == 'g') {
+            if (*aType == 'g') {
                 nResponses += HandleGetResponse(
                     rgpItem[nItem]->mServer, 
                     &rgpItem[nItem], &rgpItem[nNext]);
             }
-            else if (*a_pszType == 'd') {
+            else if (*aType == 'd') {
                 nResponses += HandleDelResponse(
                     rgpItem[nItem]->mServer, 
                     &rgpItem[nItem], &rgpItem[nNext]);
             }
         }
-        catch (const ServerSocket::Exception &) {
+        catch (const Socket::Exception & e) {
+            mTrace.Trace(CLINFO, "%s: response error '%s' at %s, marking requests as NOSERVER",
+                aType, e.mDetail, rgpItem[nItem]->mServer->GetAddress());
             rgpItem[nItem]->mServer->Disconnect();
             for (int n = nNext - 1; n >= nItem; --n) {
                 if (rgpItem[nItem]->mServer != rgpItem[n]->mServer) continue;
@@ -788,88 +641,76 @@ MemCacheClient::Combine(
         }
     }
 
+    mTrace.Trace(CLDEBUG, "%s: received %d responses to %d requests",
+        aType, nResponses, aCount);
     return nResponses;
-}
-
-void
-MemCacheClient::ReceiveLine(
-    Server *    a_pServer, 
-    string_t &  a_sValue 
-    )
-{
-    register char c;
-    a_sValue = (c = a_pServer->GetByte());
-    while (c != '\n') {
-        a_sValue += (c = a_pServer->GetByte());
-    }
 }
 
 int 
 MemCacheClient::HandleGetResponse(
-    Server *        a_pServer, 
-    MemRequest **   a_ppBegin, 
-    MemRequest **   a_ppEnd
+    Server *        aServer, 
+    MemRequest **   aBegin, 
+    MemRequest **   aEnd
     )
 {
     int nFound = 0;
 
-    string_t sValue;
+    std::string sValue;
     for (;;) {
         // get the value
-        ReceiveLine(a_pServer, sValue);
+        aServer->ReceiveLine(sValue, false);
         if (sValue == "END\r\n") break;
 
         // if it isn't a value then we are in a bad state
         if (0 != strncmp(sValue.data(), "VALUE ", 6)) {
-            throw ServerSocket::Exception("bad response");
+            throw Socket::Exception(Socket::ERR_OTHER, 0, "bad get response at VALUE");
         }
 
         // extract the key
         int n = (int) sValue.find(' ', 6);
-        if (n < 1) throw ServerSocket::Exception("bad response");
+        if (n < 1) throw Socket::Exception(Socket::ERR_OTHER, 0, "bad get response at key");
         string_t sKey(sValue, 6, n - 6);
 
         // extract the flags
-        char * pVal = const_cast<char*>(sValue.data() + n + 1);
-        unsigned nFlags = (unsigned) strtoul(pVal, &pVal, 10);
-        if (*pVal++ != ' ') throw ServerSocket::Exception("bad response");
+        const char * pVal = sValue.data() + n + 1;
+        unsigned nFlags = (unsigned) strtoul(pVal, (char**) &pVal, 10);
+        if (*pVal++ != ' ') throw Socket::Exception(Socket::ERR_OTHER, 0, "bad get response at flags");
 
         // extract the size
-        unsigned nBytes = (unsigned) strtoul(pVal, &pVal, 10);
-        if (*pVal != ' ' && *pVal != '\r') throw ServerSocket::Exception("bad response");
+        unsigned nBytes = (unsigned) strtoul(pVal, (char**) &pVal, 10);
+        if (*pVal != ' ' && *pVal != '\r') throw Socket::Exception(Socket::ERR_OTHER, 0, "bad get response at size");
 
         // find this key in the array
         MemRequest * pItem = NULL; 
-        for (MemRequest ** p = a_ppBegin; p < a_ppEnd; ++p) {
+        for (MemRequest ** p = aBegin; p < aEnd; ++p) {
             if ((*p)->mKey == sKey) { pItem = *p; break; }
         }
         if (!pItem) { // key not found, discard the response
-            a_pServer->DiscardBytes(nBytes + 2); // +2 == include final "\r\n"
+            aServer->DiscardBytes(nBytes + 2); // +2 == include final "\r\n"
             continue;
         }
         pItem->mFlags = nFlags;
 
         // extract the cas
         if (*pVal == ' ') {
-            ++pVal;
-            pItem->mCas = STRTOUL64(pVal, &pVal, 10);
-            if (*pVal != '\r') throw ServerSocket::Exception("bad response");
+            pItem->mCas = strtoull(++pVal, (char**) &pVal, 10);
+            if (*pVal != '\r') throw Socket::Exception(Socket::ERR_OTHER, 0, "bad get response at CAS");
         }
 
         // receive the data
         while (nBytes > 0) {
             char * pBuf = pItem->mData.GetWriteBuffer(nBytes);
-            int nReceived = a_pServer->GetBytes(pBuf, nBytes);
+            int nReceived = aServer->GetBytes(pBuf, nBytes);
             pItem->mData.CommitWriteBytes(nReceived);
             nBytes -= nReceived;
         }
         pItem->mResult = MCERR_OK;
 
         // discard the trailing "\r\n"
-        if ('\r' != a_pServer->GetByte() ||
-            '\n' != a_pServer->GetByte())
+        if ('\r' != aServer->GetByte() ||
+            '\n' != aServer->GetByte())
         {
-            throw ServerSocket::Exception("bad response");
+            throw Socket::Exception(Socket::ERR_OTHER, 0, "bad get response at trail");
         }
 
         ++nFound;
@@ -880,21 +721,21 @@ MemCacheClient::HandleGetResponse(
 
 int 
 MemCacheClient::HandleDelResponse(
-    Server *        a_pServer, 
-    MemRequest **   a_ppBegin, 
-    MemRequest **   a_ppEnd
+    Server *        aServer, 
+    MemRequest **   aBegin, 
+    MemRequest **   aEnd
     )
 {
-    string_t sValue;
+    std::string sValue;
     int nResponses = 0;
-    for (MemRequest ** p = a_ppBegin; p < a_ppEnd; ++p) {
+    for (MemRequest ** p = aBegin; p < aEnd; ++p) {
         MemRequest * pItem = *p; 
 
         // no response for this entry
         if (pItem->mResult == MCERR_NOREPLY) continue;
 
         // get the value
-        ReceiveLine(a_pServer, sValue);
+        aServer->ReceiveLine(sValue, false);
 
         // success
         if (sValue == "DELETED\r\n") {
@@ -910,8 +751,8 @@ MemCacheClient::HandleDelResponse(
             continue;
         }
 
-        a_pServer->Disconnect();
-        throw ServerSocket::Exception("bad response");
+        aServer->Disconnect();
+        throw Socket::Exception(Socket::ERR_OTHER, 0, "bad del response");
     }
 
     return nResponses;
@@ -919,23 +760,25 @@ MemCacheClient::HandleDelResponse(
 
 MCResult 
 MemCacheClient::IncDec(
-    const char *    a_pszType, 
-    const char *    a_pszKey, 
-    uint64_t *      a_pnNewValue,
-    uint64_t        a_nDiff,
-    bool            a_bWantReply
+    const char *    aType, 
+    unsigned        aService,
+    const char *    aKey, 
+    uint64_t *      aNewValue,
+    uint64_t        aDiff,
+    bool            aWantReply
     )
 {
-    Server * pServer = FindServer(a_pszKey);
+    string_t key(aKey);
+    Server * pServer = FindServer(key, aService);
     if (!pServer) return MCERR_NOSERVER;
 
     char szBuf[50];
-    string_t sRequest(a_pszType);
+    string_t sRequest(aType);
     sRequest += ' ';
-    sRequest += a_pszKey;
-    snprintf(szBuf, sizeof(szBuf), " " SPRINTF_UINT64, a_nDiff);
+    sRequest += aKey;
+    snprintf(szBuf, sizeof(szBuf), " %" PRIu64, aDiff);
     sRequest += szBuf;
-    if (!a_bWantReply) {
+    if (!aWantReply) {
         sRequest += " noreply";
     }
     sRequest += "\r\n";
@@ -943,7 +786,7 @@ MemCacheClient::IncDec(
     try {
         pServer->SendBytes(sRequest.data(), sRequest.length());
 
-        if (!a_bWantReply) {
+        if (!aWantReply) {
             return MCERR_NOREPLY;
         }
 
@@ -957,12 +800,14 @@ MemCacheClient::IncDec(
             return MCERR_NOTFOUND;
         }
 
-        if (a_pnNewValue) {
-            *a_pnNewValue = STRTOUL64(sValue.data(), NULL, 10);
+        if (aNewValue) {
+            *aNewValue = strtoull(sValue.data(), NULL, 10);
         }
         return MCERR_OK;
     }
-    catch (const ServerSocket::Exception &) {
+    catch (const Socket::Exception & e) {
+        mTrace.Trace(CLINFO, "IncDec: error '%s' at %s, marking request as NOSERVER",
+            e.mDetail, pServer->GetAddress());
         pServer->Disconnect();
         return MCERR_NOSERVER;
     }
@@ -970,42 +815,54 @@ MemCacheClient::IncDec(
 
 int 
 MemCacheClient::Store(
-    const char *    a_pszType,
-    MemRequest *    a_rgItem, 
-    int             a_nCount
+    const char *    aType,
+    MemRequest *    aItem, 
+    int             aCount
     )
 {
-    if (a_nCount < 1) return 0;
+    if (aCount < 1) {
+        mTrace.Trace(CLDEBUG, "Store: ignoring request for %d items", aCount);
+        return 0;
+    }
 
     // initialize and find all of the servers for these items
-    for (int n = 0; n < a_nCount; ++n) {
+    int nItemCount = 0;
+    for (int n = 0; n < aCount; ++n) {
         // ensure that the key doesn't have a space in it
-        assert(NULL == strchr(a_rgItem[n].mKey.data(), ' '));
-        a_rgItem[n].mServer = FindServer(a_rgItem[n].mKey);
-        if (!a_rgItem[n].mServer) {
-            a_rgItem[n].mResult = MCERR_NOSERVER;
+        CR_ASSERT(NULL == strchr(aItem[n].mKey.data(), ' '));
+        aItem[n].mServer = FindServer(aItem[n].mKey, aItem[n].mService);
+        if (aItem[n].mServer) {
+            ++nItemCount;
         }
+        else {
+            aItem[n].mResult = MCERR_NOSERVER;
+        }
+    }
+    if (nItemCount == 0) {
+        mTrace.Trace(CLDEBUG, "Store: ignoring request for all %d items (no servers available)", 
+            aCount);
+        return 0;
     }
 
     char szBuf[50];
     int nResponses = 0;
     string_t sRequest;
-    for (int n = 0; n < a_nCount; ++n) {
-        if (!a_rgItem[n].mServer) continue;
+    for (int n = 0; n < aCount; ++n) {
+        if (!aItem[n].mServer) continue;
 
         // <command name> <key> <flags> <exptime> <bytes> [noreply]\r\n
-        sRequest  = a_pszType;
+        sRequest  = aType;
         sRequest += ' ';
-        sRequest += a_rgItem[n].mKey;
+        sRequest += aItem[n].mKey;
         snprintf(szBuf, sizeof(szBuf), " %u %ld %u", 
-            a_rgItem[n].mFlags, (long) a_rgItem[n].mExpiry, 
-            a_rgItem[n].mData.GetReadSize());
+            aItem[n].mFlags, (long) aItem[n].mExpiry, 
+            (unsigned)aItem[n].mData.GetReadSize());
         sRequest += szBuf;
-        if (*a_pszType == 'c') { // cas
-            snprintf(szBuf, sizeof(szBuf), " " SPRINTF_UINT64, a_rgItem[n].mCas);
+        if (*aType == 'c') { // cas
+            snprintf(szBuf, sizeof(szBuf), " %" PRIu64, aItem[n].mCas);
             sRequest += szBuf;
         }
-        if (a_rgItem[n].mResult == MCERR_NOREPLY) {
+        if (aItem[n].mResult == MCERR_NOREPLY) {
             sRequest += " noreply";
         }
         sRequest += "\r\n";
@@ -1013,31 +870,33 @@ MemCacheClient::Store(
         // send the request. any socket error causes the server connection 
         // to be dropped, so we return errors for all requests using that server.
         try {
-            a_rgItem[n].mServer->SendBytes(
+            aItem[n].mServer->SendBytes(
                 sRequest.data(), sRequest.length());
-            a_rgItem[n].mServer->SendBytes(
-                a_rgItem[n].mData.GetReadBuffer(), 
-                a_rgItem[n].mData.GetReadSize());
-            a_rgItem[n].mServer->SendBytes("\r\n", 2);
+            aItem[n].mServer->SendBytes(
+                aItem[n].mData.GetReadBuffer(), 
+                aItem[n].mData.GetReadSize());
+            aItem[n].mServer->SendBytes("\r\n", 2);
 
             // done with these read bytes
-            a_rgItem[n].mData.CommitReadBytes(
-                a_rgItem[n].mData.GetReadSize());
+            aItem[n].mData.CommitReadBytes(
+                aItem[n].mData.GetReadSize());
 
             // if no reply is required then move on to the next request
-            if (a_rgItem[n].mResult == MCERR_NOREPLY) {
+            if (aItem[n].mResult == MCERR_NOREPLY) {
                 continue;
             }
 
             // handle this response
-            HandleStoreResponse(a_rgItem[n].mServer, a_rgItem[n]);
+            HandleStoreResponse(aItem[n].mServer, aItem[n]);
             ++nResponses;
         }
-        catch (const ServerSocket::Exception &) {
-            for (int i = a_nCount - 1; i >= n; --i) {
-                if (a_rgItem[n].mServer != a_rgItem[i].mServer) continue;
-                a_rgItem[i].mServer = NULL;
-                a_rgItem[i].mResult = MCERR_NOSERVER;
+        catch (const Socket::Exception & e) {
+            mTrace.Trace(CLINFO, "Store: error '%s' at %s, marking requests as NOSERVER",
+                e.mDetail, aItem[n].mServer->GetAddress());
+            for (int i = aCount - 1; i >= n; --i) {
+                if (aItem[n].mServer != aItem[i].mServer) continue;
+                aItem[i].mServer = NULL;
+                aItem[i].mResult = MCERR_NOSERVER;
             }
             continue;
         }
@@ -1048,17 +907,17 @@ MemCacheClient::Store(
 
 void
 MemCacheClient::HandleStoreResponse(
-    Server *        a_pServer, 
-    MemRequest &    a_oItem
+    Server *        aServer, 
+    MemRequest &    aItem
     )
 {
     // get the value
-    string_t sValue;
-    ReceiveLine(a_pServer, sValue);
+    std::string sValue;
+    aServer->ReceiveLine(sValue, false);
 
     // success
     if (sValue == "STORED\r\n") {
-        a_oItem.mResult = MCERR_OK;
+        aItem.mResult = MCERR_OK;
         return;
     }
 
@@ -1067,35 +926,43 @@ MemCacheClient::HandleStoreResponse(
     // an "add" or a "replace" command wasn't met, or that the
     // item is in a delete queue.
     if (sValue == "NOT_STORED\r\n") {
-        a_oItem.mResult = MCERR_NOTSTORED;
+        aItem.mResult = MCERR_NOTSTORED;
+        return;
+    }
+
+    // data was not stored, perhaps the key was too long?
+    if (sValue == "ERROR\r\n") {
+        aItem.mResult = MCERR_NOTSTORED;
         return;
     }
 
     // unknown response, connection may be bad
-    a_pServer->Disconnect();
-    throw ServerSocket::Exception("bad response");
+    aServer->Disconnect();
+    throw Socket::Exception(Socket::ERR_OTHER, 0, "bad store response");
 }
 
 int
 MemCacheClient::FlushAll(
-    const char *    a_pszServer, 
-    int             a_nExpiry
+    const char *    aServer, 
+    int             aExpiry
     )
 {
     char szRequest[50];
     snprintf(szRequest, sizeof(szRequest), 
-        "flush_all %u\r\n", a_nExpiry);
+        "flush_all %u\r\n", aExpiry);
 
-    Server test;
-    if (a_pszServer && !test.Set(a_pszServer)) return false;
+    Server test(mTrace);
+    if (aServer && !test.Set(aServer)) {
+        return false;
+    }
 
     int nSuccess = 0;
-    for (size_t n = 0; n < m_rgpServer.size(); ++n) {
-        Server * pServer = m_rgpServer[n];
-        if (a_pszServer && *pServer != test) continue;
+    for (size_t n = 0; n < mServer.size(); ++n) {
+        Server * pServer = mServer[n];
+        if (aServer && *pServer != test) continue;
     
         // ensure that we are connected
-        if (!pServer->Connect(m_nTimeoutMs)) {
+        if (pServer->Connect(mTimeoutMs, mRetryMs) != Server::CONNECT_SUCCESS) {
             continue;
         }
 
@@ -1118,7 +985,8 @@ MemCacheClient::FlushAll(
                 pServer->Disconnect();
             }
         }
-        catch (const ServerSocket::Exception &) {
+        catch (const Socket::Exception &) {
+            mTrace.Trace(CLINFO, "socket error, ignoring flush request");
             // data error
         }
     }

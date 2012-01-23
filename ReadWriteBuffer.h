@@ -1,5 +1,5 @@
 /*! @file       ReadWriteBuffer.h
-    @version    1.0
+    @version    2.0
     @brief      Byte buffer management
 
     Management of a byte buffer. Backing store may be either an aliased buffer
@@ -8,6 +8,7 @@
 
 #ifndef INCLUDED_ReadWriteBuffer
 #define INCLUDED_ReadWriteBuffer
+
 #if defined(_MSC_VER) && (_MSC_VER >= 1020)
 # pragma once
 #endif
@@ -174,6 +175,7 @@ public:
         @return number of bytes available for reading 
     */
     size_t GetReadSize() const;
+
     /*! @brief Read the data from the buffer. 
     
         This function is a simple wrapper around calls to GetReadSize, GetReadBuffer, 

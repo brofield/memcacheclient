@@ -1,11 +1,12 @@
 /*! @file       ReadWriteBuffer.cpp
-    @version    1.0
+    @version    2.0
     @brief      Byte buffer management
 */
 
 #include <new>
 #include <stdexcept>
 
+// local
 #include "ReadWriteBuffer.h"
 
 ///////////////////////////////////////////////////////////////////////////////

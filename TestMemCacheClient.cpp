@@ -3,7 +3,8 @@
 */
 
 #ifdef WIN32
-# include <windows.h>
+# include <winsock2.h>
+# pragma comment(lib, "ws2_32.lib")
 #endif
 
 #include <memory>
@@ -14,17 +15,8 @@
 #define VERIFY(x)   if (!(x)) throw std::exception();
 
 #ifdef WIN32
-# define GetTimer()     GetTickCount()
 # define MilliSleep(x)  Sleep(x)
 #else
-# include <time.h>
-# include <sys/time.h>
-inline static u_long GetTimer() {
-    struct timeval tv;
-    struct timezone tz;
-    gettimeofday(&tv, &tz);
-    return (u_long) (tv.tv_sec * 1000 + tv.tv_usec / 1000);
-}
 # define MilliSleep(x)  usleep((x) * 1000)
 #endif
 
@@ -258,7 +250,7 @@ static int TestDelTimeout(MemCacheClient * pClient)
         VERIFY(pClient->Add(oItem) == 1);
         VERIFY(oItem.mResult == MCERR_OK);
 
-        u_long nStart = GetTimer();
+        u_long nStart = xplatform::GetCurrentTickCount();
 
         oItem.mExpiry = 5; // 5 seconds from now
         VERIFY(pClient->Del(oItem) == 1);
@@ -273,7 +265,7 @@ static int TestDelTimeout(MemCacheClient * pClient)
             VERIFY(pClient->Add(oItem) == 1);
         }
 
-        u_long nFinish = GetTimer();
+        u_long nFinish = xplatform::GetCurrentTickCount();
 
         VERIFY(oItem.mResult == MCERR_OK);
 

@@ -1,5 +1,5 @@
 /*! @file       MemCacheClient.h
-    @version    1.2
+    @version    2.0
     @brief      Basic memcached client
  */
 /*! @mainpage
@@ -102,6 +102,7 @@ if (req.mResult == MCERR_OK) ...</pre>
 #include <vector>
 
 #include "ReadWriteBuffer.h"
+#include "Matilda.h"
 
 // ----------------------------------------------------------------------------
 /*! @brief Result code for requests to a server. 
@@ -152,17 +153,22 @@ public:
 
         /*! @brief Clear the structure in preparation for a new request. */
         void Clear() { 
-            mServer = NULL;
-            mKey    = "";
-            mFlags  = 0;
-            mExpiry = 0; 
-            mCas    = 0;
-            mResult = MCERR_OK;
+            mServer  = NULL;
+            mService = 0;
+            mKey     = "";
+            mFlags   = 0;
+            mExpiry  = 0; 
+            mCas     = 0;
+            mResult  = MCERR_OK;
             mData.SetEmpty();
-            mContext = NULL;
+            mContext  = NULL;
         }
 
     public:
+        /*! @brief required service for this request. Set to a specific service to restrict
+            the used server to only a server providing that service. */
+        unsigned mService;
+
         /*! @brief The request key. 
         
             Set this value to the key that should be used for the request. 
@@ -212,16 +218,6 @@ public:
     /*! @brief Initialise the memcached client */
     MemCacheClient();
 
-    /*! @brief Initialise the memcached client with copy. */
-    MemCacheClient(const MemCacheClient &); 
-
-    /*! @brief Copy another client. 
-        
-        All existing servers will be disconnected and removed. New connections 
-        will be created for all of the servers copied from the second client. 
-     */
-    MemCacheClient & operator=(const MemCacheClient &); 
-
     /*! @brief Destructor. 
         
         All servers will be disconnected. 
@@ -232,9 +228,22 @@ public:
     
         All network operations share the same timeout.
 
-        @param a_nTimeoutMs     Timeout in milliseconds
+        @param aTimeoutMs     Timeout in milliseconds
      */
-    void SetTimeout(int a_nTimeoutMs);
+    void SetTimeout(size_t aTimeoutMs);
+
+    /*! @brief Set the period to wait before trying to reconnect to a server
+        that isn't available.
+    
+        @param aRetryMs     Period in milliseconds
+     */
+    void SetRetryPeriod(size_t aRetryMs);
+
+    /*! @brief turn a result code into a string */
+    static const char * ConvertResult(MCResult aResult);
+
+    /*! @brief dump internal tables to trace log */
+    void DumpTables();
 
     /*-----------------------------------------------------------------------*/
     /*! @{ @name Servers */
@@ -246,29 +255,36 @@ public:
         but will instead continue to occasionally attempt connections 
         to that server. 
 
-        @param a_pszServer  The server to be added specified as IP[:PORT]. 
-                            The port will default to 11211 if not supplied.
+        @param aServerAddress   The memcached server to be as IP[:PORT]. 
+                                The port will default to 11211 if not supplied.
+        @param aServerName      Display name for the server. Default is aServerAddress.
+        @param aServiceFlags    The type of services this server is used for. 
+            When looking up a server to be used, only servers that have
+            a matching bit in these flags will be used. See SetRequiredService().
 
         @return true if server was added
      */
-    bool AddServer(const char * a_pszServer);
+    bool AddServer(
+        const char *    aServerAddress,
+        const char *    aServerName = NULL,
+        unsigned        aServices = (unsigned)-1);
 
     /*! @brief Delete a server from the client. 
     
         The server should be specified as documented in AddServer. 
 
-        @param a_pszServer  The server to be added specified as IP[:PORT]. 
-                            The port will default to 11211 if not supplied.
+        @param aServerAddress   The server to be added specified as IP[:PORT]. 
+                                The port will default to 11211 if not supplied.
 
         @return true if server was deleted
      */
-    bool DelServer(const char * a_pszServer);
+    bool DelServer(const char * aServerAddress);
 
     /*! @brief Request the list of current servers 
 
-        @param a_rgServers  list of all servers registered to this client
+        @param aServers  list of all servers registered to this client
      */
-    void GetServers(std::vector<string_t> & a_rgServers);
+    void GetServers(std::vector<string_t> & aServers);
 
     /*! @brief Disconnect from and remove all servers */
     void ClearServers();
@@ -277,181 +293,181 @@ public:
     /*! @} */
     /*! @{ @name Single Requests */
 
-    /*! @brief Add an item to the cache. 
+    /*! @brief Add an item to the server. 
     
         This will fail if the item already exists at the server.
 
-        @param a_oItem  Item to be added
+        @param aItem  Item to be added
         @return Number of items with a success result.
      */
-    inline int Add(MemRequest & a_oItem) { return Store("add", &a_oItem, 1); }
+    inline int Add(MemRequest & aItem) { return Store("add", &aItem, 1); }
 
-    /*! @brief Set an item to the cache. 
+    /*! @brief Set an item to the server. 
     
         This will always set the item at the server regardless of if it 
         already exists or not.
 
-        @param a_oItem  Item to be updated
+        @param aItem  Item to be updated
         @return Number of items with a success result.
      */
-    inline int Set(MemRequest & a_oItem) { return Store("set", &a_oItem, 1); }
+    inline int Set(MemRequest & aItem) { return Store("set", &aItem, 1); }
 
-    /*! @brief Replace an item in the cache. 
+    /*! @brief Replace an item in the server. 
     
         This will fail if the item does not already exist at the server.
 
-        @param a_oItem  Item to be updated
+        @param aItem  Item to be updated
         @return Number of items with a success result.
      */
-    inline int Replace(MemRequest & a_oItem) { return Store("replace", &a_oItem, 1); }
+    inline int Replace(MemRequest & aItem) { return Store("replace", &aItem, 1); }
 
-    /*! @brief Append data to an existing item in the cache.
+    /*! @brief Append data to an existing item in the server.
 
-        @param a_oItem  Item to be updated
+        @param aItem  Item to be updated
         @return Number of items with a success result.
      */
-    inline int Append(MemRequest & a_oItem) { return Store("append", &a_oItem, 1); }
+    inline int Append(MemRequest & aItem) { return Store("append", &aItem, 1); }
 
-    /*! @brief Prepend data to an existing item in the cache.
+    /*! @brief Prepend data to an existing item in the server.
 
-        @param a_oItem  Item to be updated
+        @param aItem  Item to be updated
         @return Number of items with a success result.
      */
-    inline int Prepend(MemRequest & a_oItem) { return Store("prepend", &a_oItem, 1); }
+    inline int Prepend(MemRequest & aItem) { return Store("prepend", &aItem, 1); }
 
-    /*! @brief Set the data to an existing item in the cache only if it has not been
+    /*! @brief Set the data to an existing item in the server only if it has not been
         modified since it was last retrieved. 
         
         This requires the mCas member to be set in the request. Use the Gets 
         command to retrieve an item with a valid mCas member.
 
-        @param a_oItem  Item to be updated
+        @param aItem  Item to be updated
         @return Number of items with a success result.
      */
-    inline int CheckSet(MemRequest & a_oItem) { return Store("cas", &a_oItem, 1); }
+    inline int CheckSet(MemRequest & aItem) { return Store("cas", &aItem, 1); }
 
-    /*! @brief Get an item from the cache.
+    /*! @brief Get an item from the server.
 
-        @param a_oItem  Item to be retrieved
+        @param aItem  Item to be retrieved
         @return Number of items with a success result.
      */
-    inline int Get(MemRequest & a_oItem) { return Combine("get", &a_oItem, 1); }
+    inline int Get(MemRequest & aItem) { return Combine("get", &aItem, 1); }
 
-    /*! @brief Get an item from the cache including the CAS data.
+    /*! @brief Get an item from the server including the CAS data.
 
-        @param a_oItem  Item to be retrieved
+        @param aItem  Item to be retrieved
         @return Number of items with a success result.
      */
-    inline int Gets(MemRequest & a_oItem) { return Combine("gets", &a_oItem, 1); }
+    inline int Gets(MemRequest & aItem) { return Combine("gets", &aItem, 1); }
 
-    /*! @brief Delete an item from the cache.
+    /*! @brief Delete an item from the server.
 
-        @param a_oItem  Item to be removed.
+        @param aItem  Item to be removed.
         @return Number of items with a success result.
      */
-    inline int Del(MemRequest & a_oItem) { return Combine("del", &a_oItem, 1); }
+    inline int Del(MemRequest & aItem) { return Combine("del", &aItem, 1); }
 
 
     /*! @brief Increment a value at the server. 
     
         See the INCR command in the memcached protocol. 
 
-        @param a_pszKey         Key to increment
-        @param a_pnNewValue     Receive the new value if desired. If a_bWantReply is false, 
-                                this value will not be updated. If a_bWantReply is true, a
+        @param aKey         Key to increment
+        @param aNewValue     Receive the new value if desired. If aWantReply is false, 
+                                this value will not be updated. If aWantReply is true, a
                                 reply will stil be requested from the server even if this
                                 item is NULL.
-        @param a_nDiff          Positive integer to increment the value at the server by.
-        @param a_bWantReply     Should a reply be requested from the server.
+        @param aDiff          Positive integer to increment the value at the server by.
+        @param aWantReply     Should a reply be requested from the server.
         @return MCResult
      */
-    inline MCResult Increment(const char * a_pszKey, uint64_t * a_pnNewValue = NULL, uint64_t a_nDiff = 1, bool a_bWantReply = true) { 
-        return IncDec("incr", a_pszKey, a_pnNewValue, a_nDiff, a_bWantReply);
+    inline MCResult Increment(const char * aKey, uint64_t * aNewValue = NULL, uint64_t aDiff = 1, bool aWantReply = true, unsigned aService = 0) { 
+        return IncDec("incr", aService, aKey, aNewValue, aDiff, aWantReply);
     }
 
     /*! @brief Decrement a value at the server. 
     
         See the DECR command in the memcached protocol. 
 
-        @param a_pszKey         Key to decrement
-        @param a_pnNewValue     Receive the new value if desired. If a_bWantReply is false, 
-                                this value will not be updated. If a_bWantReply is true, a
+        @param aKey         Key to decrement
+        @param aNewValue     Receive the new value if desired. If aWantReply is false, 
+                                this value will not be updated. If aWantReply is true, a
                                 reply will stil be requested from the server even if this
                                 item is NULL.
-        @param a_nDiff          Positive integer to decrement the value at the server by.
-        @param a_bWantReply     Should a reply be requested from the server.
+        @param aDiff          Positive integer to decrement the value at the server by.
+        @param aWantReply     Should a reply be requested from the server.
         @return MCResult
      */
-    inline MCResult Decrement(const char * a_pszKey, uint64_t * a_pnNewValue = NULL, uint64_t a_nDiff = 1, bool a_bWantReply = true) { 
-        return IncDec("decr", a_pszKey, a_pnNewValue, a_nDiff, a_bWantReply); 
+    inline MCResult Decrement(const char * aKey, uint64_t * aNewValue = NULL, uint64_t aDiff = 1, bool aWantReply = true, unsigned aService = 0) { 
+        return IncDec("decr", aService, aKey, aNewValue, aDiff, aWantReply); 
     }
 
     /*-----------------------------------------------------------------------*/
     /*! @} */
     /*! @{ @name Multiple Requests */
 
-    /*! @brief Add multiple items to the cache.
+    /*! @brief Add multiple items to the server.
     
         This will fail if the item already exists at the server.
         
         @note   Each request is independent of other requests in the array. Failure 
                 of one request does not imply failure of any other. 
 
-        @param a_rgItem     Array of items to be added
-        @param a_nCount     Number of items in the array
+        @param aItem     Array of items to be added
+        @param aCount     Number of items in the array
         @return Number of items with a success result
      */
-    inline int Add(MemRequest * a_rgItem, int a_nCount) { return Store("add", a_rgItem, a_nCount); }
+    inline int Add(MemRequest * aItem, int aCount) { return Store("add", aItem, aCount); }
 
-    /*! @brief Set multiple items to the cache. 
+    /*! @brief Set multiple items to the server. 
     
         This will always set the item at the server regardless of if it already exists or not.
         
         @note   Each request is independent of other requests in the array. Failure 
                 of one request does not imply failure of any other. 
 
-        @param a_rgItem     Array of items to be added
-        @param a_nCount     Number of items in the array
+        @param aItem     Array of items to be added
+        @param aCount     Number of items in the array
         @return Number of items with a success result
      */
-    inline int Set(MemRequest * a_rgItem, int a_nCount) { return Store("set", a_rgItem, a_nCount); }
+    inline int Set(MemRequest * aItem, int aCount) { return Store("set", aItem, aCount); }
 
-    /*! @brief Replace multiple items in the cache. 
+    /*! @brief Replace multiple items in the server. 
     
         This will fail if the item does not already exist at the server.
         
         @note   Each request is independent of other requests in the array. Failure 
                 of one request does not imply failure of any other. 
 
-        @param a_rgItem     Array of items to be added
-        @param a_nCount     Number of items in the array
+        @param aItem     Array of items to be added
+        @param aCount     Number of items in the array
         @return Number of items with a success result
      */
-    inline int Replace(MemRequest * a_rgItem, int a_nCount) { return Store("replace", a_rgItem, a_nCount); }
+    inline int Replace(MemRequest * aItem, int aCount) { return Store("replace", aItem, aCount); }
 
-    /*! @brief Append data to multiple existing items in the cache.
+    /*! @brief Append data to multiple existing items in the server.
         
         @note   Each request is independent of other requests in the array. Failure 
                 of one request does not imply failure of any other. 
 
-        @param a_rgItem     Array of items to be added
-        @param a_nCount     Number of items in the array
+        @param aItem     Array of items to be added
+        @param aCount     Number of items in the array
         @return Number of items with a success result
      */
-    inline int Append(MemRequest * a_rgItem, int a_nCount) { return Store("append", a_rgItem, a_nCount); }
+    inline int Append(MemRequest * aItem, int aCount) { return Store("append", aItem, aCount); }
 
-    /*! @brief Prepend data to multiple existing items in the cache.
+    /*! @brief Prepend data to multiple existing items in the server.
         
         @note   Each request is independent of other requests in the array. Failure 
                 of one request does not imply failure of any other. 
 
-        @param a_rgItem     Array of items to be added
-        @param a_nCount     Number of items in the array
+        @param aItem     Array of items to be added
+        @param aCount     Number of items in the array
         @return Number of items with a success result
      */
-    inline int Prepend(MemRequest * a_rgItem, int a_nCount) { return Store("prepend", a_rgItem, a_nCount); }
+    inline int Prepend(MemRequest * aItem, int aCount) { return Store("prepend", aItem, aCount); }
 
-    /*! @brief Set the data to multiple existing items in the cache only if it has not been
+    /*! @brief Set the data to multiple existing items in the server only if it has not been
         modified since it was last retrieved. 
         
         This requires the mCas member to be set in the request. Use the Gets command to 
@@ -460,129 +476,139 @@ public:
         @note   Each request is independent of other requests in the array. Failure 
                 of one request does not imply failure of any other. 
 
-        @param a_rgItem     Array of items to be added
-        @param a_nCount     Number of items in the array
+        @param aItem     Array of items to be added
+        @param aCount     Number of items in the array
         @return Number of items with a success result
      */
-    inline int CheckSet(MemRequest * a_rgItem, int a_nCount) { return Store("cas", a_rgItem, a_nCount); }
+    inline int CheckSet(MemRequest * aItem, int aCount) { return Store("cas", aItem, aCount); }
 
-    /*! @brief Get an item from the cache.
+    /*! @brief Get an item from the server.
         
         @note   Each request is independent of other requests in the array. Failure 
                 of one request does not imply failure of any other. 
 
-        @param a_rgItem     Array of items to be retrieved
-        @param a_nCount     Number of items in the array
+        @param aItem     Array of items to be retrieved
+        @param aCount     Number of items in the array
         @return Number of items with a success result
      */
-    inline int Get(MemRequest * a_rgItem, int a_nCount) { return Combine("get", a_rgItem, a_nCount); }
+    inline int Get(MemRequest * aItem, int aCount) { return Combine("get", aItem, aCount); }
 
-    /*! @brief Get multiple items from the cache including the CAS data.
+    /*! @brief Get multiple items from the server including the CAS data.
         
         @note   Each request is independent of other requests in the array. Failure 
                 of one request does not imply failure of any other. 
 
-        @param a_rgItem     Array of items to be retrieved
-        @param a_nCount     Number of items in the array
+        @param aItem     Array of items to be retrieved
+        @param aCount     Number of items in the array
         @return Number of items with a success result
      */
-    inline int Gets(MemRequest * a_rgItem, int a_nCount) { return Combine("gets", a_rgItem, a_nCount); }
+    inline int Gets(MemRequest * aItem, int aCount) { return Combine("gets", aItem, aCount); }
 
-    /*! @brief Delete multiple items from the cache.
+    /*! @brief Delete multiple items from the server.
         
         @note   Each request is independent of other requests in the array. Failure 
                 of one request does not imply failure of any other. 
 
-        @param a_rgItem     Array of items to be retrieved
-        @param a_nCount     Number of items in the array
+        @param aItem     Array of items to be retrieved
+        @param aCount     Number of items in the array
         @return Number of items with a success result
      */
-    inline int Del(MemRequest * a_rgItem, int a_nCount) { return Combine("del", a_rgItem, a_nCount); }
+    inline int Del(MemRequest * aItem, int aCount) { return Combine("del", aItem, aCount); }
 
     /*! @brief Send a flush_all command to a specific server or all servers.
         
         @note   Each request is independent of other requests in the array. Failure 
                 of one request does not imply failure of any other. 
 
-        @param a_pszServer      Server to flush. If NULL all servers will be flushed.
-        @param a_nExpiry        Expiry time for the flush. The server will wait before executing
-                                the cache flush. See MemRequest::mExpiry for details of possible
+        @param aServer      Server to flush. If NULL all servers will be flushed.
+        @param aExpiry        Expiry time for the flush. The server will wait before executing
+                                the server flush. See MemRequest::mExpiry for details of possible
                                 values. 
         @return Number of servers that were flushed.
      */
-    int FlushAll(const char * a_pszServer = NULL, int a_nExpiry = 0);
+    int FlushAll(const char * aServer = NULL, int aExpiry = 0);
 
     /*! @} */
 
 private:
+    // disabled
+    MemCacheClient(const MemCacheClient &); 
+    MemCacheClient & operator=(const MemCacheClient &); 
+
     /*-----------------------------------------------------------------------*/
     /*! @{ 
         @internal 
         @name Internal 
      */
+    ClTrace mTrace;
 
-    std::vector<Server*> m_rgpServer;       //!< current servers
+    std::vector<Server*> mServer; //!< current servers
 
-    int m_nTimeoutMs;                       //!< network timeout in millisec for all operations
+    size_t mTimeoutMs; //!< network timeout in millisec for all operations
+
+    size_t mRetryMs; //!< retry period in millisec for unavailable servers
 
     /*! @brief Maintain the N:1 hash key to server relationship used for consistent hashing. 
         
         Consistent hashing for the servers ensures that even with changes to the server list, 
         many of the data keys will continue to mapped to the same server. This ensures that 
-        changes to the server list doesn't invalidate the entire cache.
+        changes to the server list doesn't invalidate all cached data.
      */
     struct ConsistentHash { 
         unsigned long   mHash;      //!< hash value
         Server *        mServer;    //!< server implementation
+        unsigned        mServices;  //!< services this server provides
+        int             mEntry;     //!< distinguish same hash and server
 
         /*! constructor */
-        ConsistentHash(unsigned long aHash, Server * aServer) 
-            : mHash(aHash), mServer(aServer) { }
+        ConsistentHash(unsigned long aHash, Server * aServer, unsigned aServices, int aEntry) 
+            : mHash(aHash), mServer(aServer), mServices(aServices), mEntry(aEntry) { }
         /*! copy constructor */
         ConsistentHash(const ConsistentHash & rhs) { operator=(rhs); }
         /*! copy */
         ConsistentHash & operator=(const ConsistentHash & rhs) {
-            mHash = rhs.mHash; mServer = rhs.mServer; return *this; }
+            mHash = rhs.mHash; mServer = rhs.mServer; mServices = rhs.mServices; mEntry = rhs.mEntry; 
+            return *this; 
+        }
+        /*! does this server handle the required service? */
+        inline bool services(unsigned aService) { return (mServices & aService) == aService; }
         /*! comparison on hash value */
-        bool operator<(const ConsistentHash & rhs) const { return mHash < rhs.mHash; }
-        /*! equality on hash value */
-        bool operator==(const ConsistentHash & rhs) const { return mHash == rhs.mHash; }
+        bool operator<(const ConsistentHash & rhs) const;
         /*! match on server pointer */
         struct MatchServer;
+    private:
+        bool operator==(const ConsistentHash & rhs) const;
     };
 
     /*! @brief Consistent hash ring for servers.
     
         This vector is in sorted order on the hash key. 
      */
-    std::vector<ConsistentHash> m_rgServerHash;
+    std::vector<ConsistentHash> mServerHash;
 
     /*! create a hash value from the key */
-    unsigned long CreateKeyHash(const char * a_pszKey);
+    unsigned long CreateKeyHash(const char * aKey);
 
     /*! find which server will be used to handle the key */
-    Server * FindServer(const string_t & a_sKey);
+    Server * FindServer(const string_t & aKey, unsigned aService);
 
     /*! send storage requests (add, set, cas, replace, append, prepend) */
-    int Store(const char * a_pszType, MemRequest * a_rgItem, int a_nCount);
+    int Store(const char * aType, MemRequest * aItem, int aCount);
 
     /*! handle a single storage response from a server */
-    void HandleStoreResponse(Server * a_pServer, MemRequest & a_oItem);
+    void HandleStoreResponse(Server * aServer, MemRequest & aItem);
     
     /*! send multiple commands to all servers for commands that can be combined (get, gets, del) */
-    int Combine(const char * a_pszType, MemRequest * a_rgItem, int a_nCount);
-
-    /*! receive a line of text ending with a \n character */
-    void ReceiveLine(Server * a_pServer, string_t & a_sValue);
+    int Combine(const char * aType, MemRequest * aItem, int aCount);
 
     /*! handle a single get or gets response from a server */
-    int HandleGetResponse(Server * a_pServer, MemRequest ** a_ppBegin, MemRequest ** a_ppEnd);
+    int HandleGetResponse(Server * aServer, MemRequest ** aBegin, MemRequest ** aEnd);
 
     /*! handle a single del response from a server */
-    int HandleDelResponse(Server * a_pServer, MemRequest ** a_ppBegin, MemRequest ** a_ppEnd);
+    int HandleDelResponse(Server * aServer, MemRequest ** aBegin, MemRequest ** aEnd);
 
     /*! send an incr or decr request to a server and handle the response */
-    MCResult IncDec(const char * a_pszType, const char * a_pszKey, uint64_t * a_pnNewValue, uint64_t a_nDiff, bool a_bWantReply);
+    MCResult IncDec(const char * aType, unsigned aService, const char * aKey, uint64_t * aNewValue, uint64_t aDiff, bool aWantReply);
 
     /*! @} */
 };
