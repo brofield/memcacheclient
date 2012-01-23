@@ -15,6 +15,7 @@
 # define PRIu64     "I64u"
 #else
 # include <stdint.h>
+# define PRIu64     "llu"
 #endif
 
 #define CR_ASSERT(x)    

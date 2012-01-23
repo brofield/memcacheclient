@@ -3,7 +3,12 @@
     @brief      Internal wrapper
  */
 
-#include <windows.h>
+#ifdef _WIN32
+# include <windows.h>
+#else
+# include <time.h>
+#endif
+
 #include "Matilda.h"
 
 namespace xplatform {
