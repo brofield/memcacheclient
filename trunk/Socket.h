@@ -12,6 +12,10 @@
 
 #ifdef _WIN32
 # include <winsock2.h>
+#else
+# include <sys/socket.h>
+# include <arpa/inet.h>
+typedef int SOCKET;
 #endif
 
 #ifdef CROSSBASE_API
@@ -118,7 +122,7 @@ public:
     void Connect(const char * aIpAddress, int aPort); // throw Exception
 
     /*! @brief Determine if we are currently connected to a server */
-    inline bool IsConnected() const { return mSocket != INVALID_SOCKET; }
+    bool IsConnected() const;
 
     /*! @brief Disconnect from the server */
     void Disconnect();

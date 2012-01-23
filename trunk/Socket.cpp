@@ -49,6 +49,7 @@ typedef unsigned long           in_addr_t;
 # define ioctlsocket            ioctl
 # define GetLastSocketErrno()   errno
 # define handleEINTR(retval)    (retval < 0 && errno == EINTR)
+# define INVALID_SOCKET         -1
 #endif
 
 #ifdef CROSSBASE_API
@@ -57,6 +58,7 @@ typedef unsigned long           in_addr_t;
 #endif
 
 #include "Socket.h"
+#include <string>
 
 // static function
 bool
@@ -116,6 +118,11 @@ Socket::Socket(const ClTrace & aTrace)
 Socket::~Socket() 
 {
     Disconnect();
+}
+
+bool Socket::IsConnected() const 
+{ 
+    return mSocket != INVALID_SOCKET; 
 }
 
 // Fuck you very much Microsoft for not following the specs for socket timeouts.
@@ -667,7 +674,12 @@ Socket::GetLastError(
     if (hModule) {
         FreeLibrary(hModule);
     }
-#else
+#elif defined(CROSSBASE_API)
     ClGetLastError(aError, aErrorMsg);
+#else
+    const char * pError = strerror(aError);
+    wchar_t buf[256];
+    mbstowcs(buf, pError, 256);
+    aErrorMsg = buf;
 #endif
 }

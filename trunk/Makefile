@@ -1,11 +1,12 @@
 CC=g++
 CFLAGS=-Wall
 CPPFLAGS=-Wall
+LIBS=-lrt
 
 OBJS=TestMemCacheClient.o MemCacheClient.o ReadWriteBuffer.o Socket.o Matilda.o sha1.o
 
 all: $(OBJS)
-	$(CC) -o TestMemCacheClient $(OBJS)
+	$(CC) -o TestMemCacheClient $(OBJS) $(LIBS)
 
 clean:
 	rm -f core *.o TestMemCacheClient

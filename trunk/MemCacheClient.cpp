@@ -9,6 +9,8 @@
 #ifdef _WIN32
 # include <winsock2.h>
 # define strtoull _strtoui64
+#else
+# include <stdint.h>
 #endif
 
 // lib
@@ -693,8 +695,9 @@ MemCacheClient::HandleGetResponse(
 
         // extract the cas
         if (*pVal == ' ') {
-            pItem->mCas = strtoull(++pVal, (char**) &pVal, 10);
-            if (*pVal != '\r') throw Socket::Exception(Socket::ERR_OTHER, 0, "bad get response at CAS");
+            char * last = NULL;
+            pItem->mCas = strtoull(++pVal, &last, 10);
+            if (*last != '\r') throw Socket::Exception(Socket::ERR_OTHER, 0, "bad get response at CAS");
         }
 
         // receive the data
