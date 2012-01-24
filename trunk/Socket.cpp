@@ -16,21 +16,13 @@
 # include <winsock2.h>
 # include <ws2tcpip.h>
 # pragma warning(pop)
-# ifndef EWOULDBLOCK
-# define EWOULDBLOCK            WSAEWOULDBLOCK
-# endif
-# ifndef ECONNABORTED
-# define ECONNABORTED           WSAECONNABORTED
-# endif
-# ifndef ECONNREFUSED
-# define ECONNREFUSED           WSAECONNREFUSED
-# endif
-# ifndef ETIMEDOUT
-# define ETIMEDOUT              WSAETIMEDOUT
-# endif
-# ifndef EINPROGRESS
-# define EINPROGRESS            WSAEINPROGRESS
-# endif
+// MSVC 2003-2008 never defined the EWOULDBLOCK etc errors,
+// but MSVC 2010 does, however they are different values to
+// the WSA errors that we need to check. This means that we 
+// need to define our own error symbols to handle the MS FUBAR.
+# define ERROR_WOULDBLOCK       WSAEWOULDBLOCK
+# define ERROR_INPROGRESS       WSAEINPROGRESS
+# define ERROR_TIMEDOUT         WSAETIMEDOUT
 # define MSG_NOSIGNAL           0
 # define GetLastSocketErrno     WSAGetLastError
 // we don't need to handle EINTR on Windows, so just use false for this case
@@ -45,6 +37,13 @@ typedef unsigned long           in_addr_t;
 # include <netinet/tcp.h>
 # include <netdb.h>
 # include <fcntl.h>
+// MSVC 2003-2008 never defined the EWOULDBLOCK etc errors,
+// but MSVC 2010 does, however they are different values to
+// the WSA errors that we need to check. This means that we 
+// need to define our own error symbols to handle the MS FUBAR.
+# define ERROR_WOULDBLOCK       EWOULDBLOCK
+# define ERROR_INPROGRESS       EINPROGRESS
+# define ERROR_TIMEDOUT         ETIMEDOUT
 # define closesocket            close
 # define ioctlsocket            ioctl
 # define GetLastSocketErrno()   errno
@@ -248,7 +247,7 @@ void Socket::waitForConnect(SOCKET aSocket)
                 throw Exception(ERR_CONNECT, errcode, "select");
             }
             if (rc == 0) {
-                throw Exception(ERR_CONNECT, ETIMEDOUT, "connection timeout");
+                throw Exception(ERR_CONNECT, ERROR_TIMEDOUT, "connection timeout");
             }
 
             // exception state is set
@@ -326,7 +325,7 @@ void Socket::waitForConnect(SOCKET aSocket)
                 throw Exception(ERR_CONNECT, errcode, "select");
             }
             if (rc == 0) {
-                throw Exception(ERR_CONNECT, ETIMEDOUT, "connection timeout");
+                throw Exception(ERR_CONNECT, ERROR_TIMEDOUT, "connection timeout");
             }
         }
 
@@ -348,7 +347,7 @@ void Socket::connectSocket(SOCKET aSocket, const sockaddr_in * aServer)
     int rc = connect(aSocket, (const struct sockaddr *) aServer, sizeof(*aServer));
     if (rc < 0) {
         const int errcode = GetLastSocketErrno();
-        if (errcode != EWOULDBLOCK && errcode != EINPROGRESS) {
+        if (errcode != ERROR_WOULDBLOCK && errcode != ERROR_INPROGRESS) {
             throw Exception(ERR_CONNECT, errcode, "connect");
         }
 
