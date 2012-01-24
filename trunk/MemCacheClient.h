@@ -101,8 +101,13 @@ if (req.mResult == MCERR_OK) ...</pre>
 #include <string>
 #include <vector>
 
-#include "ReadWriteBuffer.h"
-#include "Matilda.h"
+#ifdef CROSSBASE_API
+#include <Core/ReadWriteBuffer.h>
+START_CL_NAMESPACE
+#else
+# include "ReadWriteBuffer.h"
+# include "Matilda.h"
+#endif
 
 // ----------------------------------------------------------------------------
 /*! @brief Result code for requests to a server. 
@@ -129,7 +134,7 @@ enum MCResult {
     Use explicit locking or an instance per thread. Each instance will maintain
     a single TCP socket open to each server.
  */
-class MemCacheClient 
+class CROSSBASE_CLASS_API MemCacheClient 
 {
     class Server;                           //!< server connection implementation
 
@@ -612,5 +617,9 @@ private:
 
     /*! @} */
 };
+
+#ifdef CROSSBASE_API
+END_CL_NAMESPACE
+#endif
 
 #endif // INCLUDED_MemCacheClient
