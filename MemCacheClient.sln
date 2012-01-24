@@ -1,11 +1,11 @@
 Microsoft Visual Studio Solution File, Format Version 8.00
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MemCacheClient", "MemCacheClient.vcproj", "{C1C65CCC-CC70-49E8-A310-5D0AAD670952}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MemCacheClientTest", "MemCacheClientTest.vcproj", "{771A7A13-8809-40C3-9C0D-F70669501C90}"
 	ProjectSection(ProjectDependencies) = postProject
+		{CEDE3DFE-1339-45BA-99BC-93F1B16BCFD1} = {CEDE3DFE-1339-45BA-99BC-93F1B16BCFD1}
 	EndProjectSection
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "TestMemCacheClient", "TestMemCacheClient.vcproj", "{E0E3FC8D-2341-4D2A-8AB5-1AB193056620}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MemCacheClient", "MemCacheClient.vcproj", "{CEDE3DFE-1339-45BA-99BC-93F1B16BCFD1}"
 	ProjectSection(ProjectDependencies) = postProject
-		{C1C65CCC-CC70-49E8-A310-5D0AAD670952} = {C1C65CCC-CC70-49E8-A310-5D0AAD670952}
 	EndProjectSection
 EndProject
 Global
@@ -13,15 +13,17 @@ Global
 		Debug = Debug
 		Release = Release
 	EndGlobalSection
+	GlobalSection(ProjectDependencies) = postSolution
+	EndGlobalSection
 	GlobalSection(ProjectConfiguration) = postSolution
-		{C1C65CCC-CC70-49E8-A310-5D0AAD670952}.Debug.ActiveCfg = Debug|Win32
-		{C1C65CCC-CC70-49E8-A310-5D0AAD670952}.Debug.Build.0 = Debug|Win32
-		{C1C65CCC-CC70-49E8-A310-5D0AAD670952}.Release.ActiveCfg = Release|Win32
-		{C1C65CCC-CC70-49E8-A310-5D0AAD670952}.Release.Build.0 = Release|Win32
-		{E0E3FC8D-2341-4D2A-8AB5-1AB193056620}.Debug.ActiveCfg = Debug|Win32
-		{E0E3FC8D-2341-4D2A-8AB5-1AB193056620}.Debug.Build.0 = Debug|Win32
-		{E0E3FC8D-2341-4D2A-8AB5-1AB193056620}.Release.ActiveCfg = Release|Win32
-		{E0E3FC8D-2341-4D2A-8AB5-1AB193056620}.Release.Build.0 = Release|Win32
+		{771A7A13-8809-40C3-9C0D-F70669501C90}.Debug.ActiveCfg = Debug|Win32
+		{771A7A13-8809-40C3-9C0D-F70669501C90}.Debug.Build.0 = Debug|Win32
+		{771A7A13-8809-40C3-9C0D-F70669501C90}.Release.ActiveCfg = Release|Win32
+		{771A7A13-8809-40C3-9C0D-F70669501C90}.Release.Build.0 = Release|Win32
+		{CEDE3DFE-1339-45BA-99BC-93F1B16BCFD1}.Debug.ActiveCfg = Debug|Win32
+		{CEDE3DFE-1339-45BA-99BC-93F1B16BCFD1}.Debug.Build.0 = Debug|Win32
+		{CEDE3DFE-1339-45BA-99BC-93F1B16BCFD1}.Release.ActiveCfg = Release|Win32
+		{CEDE3DFE-1339-45BA-99BC-93F1B16BCFD1}.Release.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 	EndGlobalSection

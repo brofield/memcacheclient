@@ -49,6 +49,30 @@ static int TestServerParsing()
     }
 }
 
+static int TestAdd(MemCacheClient * pClient)
+{
+    MemCacheClient::MemRequest oItem;
+    try {
+        VERIFY(pClient->FlushAll() > 0);
+
+        oItem.mKey = "TestAdd";
+        oItem.mData.WriteBytes("TestAdd", sizeof("TestAdd"));
+
+        VERIFY(pClient->Add(oItem) == 1);
+        VERIFY(oItem.mResult == MCERR_OK);
+
+        VERIFY(pClient->Add(oItem) == 1);
+        VERIFY(oItem.mResult == MCERR_NOTSTORED);
+
+        printf("PASSED: TestAdd\n");
+        return 0;
+    }
+    catch (const std::exception &) {
+        printf("FAILED: TestAdd\n");
+        return 1;
+    }
+}
+
 static int TestSet(MemCacheClient * pClient)
 {
     MemCacheClient::MemRequest oItem;
@@ -96,30 +120,6 @@ static int TestReplace(MemCacheClient * pClient)
     }
     catch (const std::exception &) {
         printf("FAILED: TestReplace\n");
-        return 1;
-    }
-}
-
-static int TestAdd(MemCacheClient * pClient)
-{
-    MemCacheClient::MemRequest oItem;
-    try {
-        VERIFY(pClient->FlushAll() > 0);
-
-        oItem.mKey = "TestAdd";
-        oItem.mData.WriteBytes("TestAdd", sizeof("TestAdd"));
-
-        VERIFY(pClient->Add(oItem) == 1);
-        VERIFY(oItem.mResult == MCERR_OK);
-
-        VERIFY(pClient->Add(oItem) == 1);
-        VERIFY(oItem.mResult == MCERR_NOTSTORED);
-
-        printf("PASSED: TestAdd\n");
-        return 0;
-    }
-    catch (const std::exception &) {
-        printf("FAILED: TestAdd\n");
         return 1;
     }
 }

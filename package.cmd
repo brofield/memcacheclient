@@ -1,4 +1,4 @@
-set VERSION=1.2
+set VERSION=2.0
 
 set SEVENZIP="C:\Program Files\7-Zip\7z.exe"
 
