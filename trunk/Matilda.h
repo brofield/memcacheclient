@@ -17,6 +17,7 @@
 #else
 # include <stdint.h>
 # define PRIu64     "llu"
+# define SOCKET     int
 #endif
 
 // use your preferred assertion library (e.g. boost)

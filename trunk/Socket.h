@@ -33,9 +33,6 @@ class CROSSBASE_CLASS_API Socket
 {
 protected:
     const static int MAXBUF = 1024; //!< size of internal data buffer
-#ifndef _WIN32
-    typedef int SOCKET;
-#endif
 
     ClTrace mTrace;             //!< trace output
     SOCKET  mSocket;            //!< socket being abstracted
