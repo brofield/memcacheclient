@@ -61,6 +61,7 @@ private:
     void setSocketOptions(SOCKET aSocket);
     void setSocketBufferSize(SOCKET aSocket);
     void setSocketBlocking(SOCKET aSocket, bool aBlocking);
+    int  setSocketTimeout(SOCKET aSocket, int aType, int aTimeout);
 
 protected:
     /*! @brief Receive data into a buffer with as many bytes as possible up 

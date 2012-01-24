@@ -133,7 +133,7 @@ bool Socket::IsConnected() const
 // Windows: http://msdn.microsoft.com/en-us/library/windows/desktop/ms740476%28v=vs.85%29.aspx
 //  SO_RCVTIMEO     DWORD or int depending on documentation     timeout in milliseconds
 //
-static int setSocketTimeout(SOCKET aSocket, int aType, int aTimeout)
+int Socket::setSocketTimeout(SOCKET aSocket, int aType, int aTimeout)
 {
 #ifdef _WIN32
     DWORD timeout = (DWORD) aTimeout;

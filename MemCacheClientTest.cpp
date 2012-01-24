@@ -8,11 +8,13 @@
 #endif
 
 #include <memory>
+#include <stdexcept>
 #include <stdio.h>
 
 #include "MemCacheClient.h"
 
-#define VERIFY(x)   if (!(x)) throw std::exception();
+#define STR(x)      #x
+#define VERIFY(x)   if (!(x)) throw std::runtime_error(STR(x));
 
 #ifdef WIN32
 # define MilliSleep(x)  Sleep(x)
@@ -43,8 +45,8 @@ static int TestServerParsing()
         printf("PASSED: TestServerParsing\n");
         return 0;
     }
-    catch (const std::exception &) {
-        printf("FAILED: TestServerParsing\n");
+    catch (const std::exception & e) {
+        printf("FAILED: TestServerParsing: %s\n", e.what());
         return 1;
     }
 }
@@ -67,8 +69,8 @@ static int TestAdd(MemCacheClient * pClient)
         printf("PASSED: TestAdd\n");
         return 0;
     }
-    catch (const std::exception &) {
-        printf("FAILED: TestAdd\n");
+    catch (const std::exception & e) {
+        printf("FAILED: TestAdd: %s\n", e.what());
         return 1;
     }
 }
@@ -91,8 +93,8 @@ static int TestSet(MemCacheClient * pClient)
         printf("PASSED: TestSet\n");
         return 0;
     }
-    catch (const std::exception &) {
-        printf("FAILED: TestSet\n");
+    catch (const std::exception & e) {
+        printf("FAILED: TestSet: %s\n", e.what());
         return 1;
     }
 }
@@ -118,8 +120,8 @@ static int TestReplace(MemCacheClient * pClient)
         printf("PASSED: TestReplace\n");
         return 0;
     }
-    catch (const std::exception &) {
-        printf("FAILED: TestReplace\n");
+    catch (const std::exception & e) {
+        printf("FAILED: TestReplace: %s\n", e.what());
         return 1;
     }
 }
@@ -145,8 +147,8 @@ static int TestDel(MemCacheClient * pClient)
         printf("PASSED: TestDel\n");
         return 0;
     }
-    catch (const std::exception &) {
-        printf("FAILED: TestDel\n");
+    catch (const std::exception & e) {
+        printf("FAILED: TestDel: %s\n", e.what());
         return 1;
     }
 }
@@ -187,8 +189,8 @@ static int TestIncrement(MemCacheClient * pClient)
         printf("PASSED: TestIncrement\n");
         return 0;
     }
-    catch (const std::exception &) {
-        printf("FAILED: TestIncrement\n");
+    catch (const std::exception & e) {
+        printf("FAILED: TestIncrement: %s\n", e.what());
         return 1;
     }
 }
@@ -232,8 +234,8 @@ static int TestDecrement(MemCacheClient * pClient)
         printf("PASSED: TestDecrement\n");
         return 0;
     }
-    catch (const std::exception &) {
-        printf("FAILED: TestDecrement\n");
+    catch (const std::exception & e) {
+        printf("FAILED: TestDecrement: %s\n", e.what());
         return 1;
     }
 }
@@ -270,13 +272,13 @@ static int TestDelTimeout(MemCacheClient * pClient)
         VERIFY(oItem.mResult == MCERR_OK);
 
         u_long nPeriod = nFinish - nStart;
-        VERIFY(nPeriod >= 4500); // took 5 seconds (+-10%)
+        VERIFY(nPeriod >= 4000); // took 5 seconds (+-20%)
 
         printf("PASSED: TestDelTimeout\n");
         return 0;
     }
-    catch (const std::exception &) {
-        printf("FAILED: TestDelTimeout\n");
+    catch (const std::exception & e) {
+        printf("FAILED: TestDelTimeout: %s\n", e.what());
         return 1;
     }
 }
