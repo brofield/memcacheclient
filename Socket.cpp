@@ -52,13 +52,14 @@ typedef unsigned long           in_addr_t;
 # define INVALID_SOCKET         -1
 #endif
 
+#include "Socket.h"
+#include <string>
+
 #ifdef CROSSBASE_API
 # include <xplatform/timer.h>
 # include <Core/clpaths.h>
+START_CL_NAMESPACE
 #endif
-
-#include "Socket.h"
-#include <string>
 
 // static function
 bool
@@ -258,7 +259,7 @@ void Socket::waitForConnect(SOCKET aSocket)
     }
     catch (const Exception & e) {
         mTrace.Trace(CLINFO, "connect exception: %s, %d", e.mDetail, e.mCode);
-        throw e;
+        throw;
     }
 #else // !_WIN32
     fd_set *wr = NULL;
@@ -418,7 +419,8 @@ void Socket::setSocketBufferSize(SOCKET aSocket)
 
 void Socket::Connect(const char * aIpAddress, int aPort)
 {
-    mTrace.Trace(CLINFO, "Connect socket to %s:%d (connect: %dms, send: %dms, recv: %dms, buffer: %d)",
+    mTrace.Trace(CLINFO, 
+        "Connect socket to %s:%d (connect: %dms, send: %dms, recv: %dms, buffer: %d)",
         aIpAddress, aPort, mConnectTimeout, mSendTimeout, mRecvTimeout, mBufferSize
         );
 
@@ -560,6 +562,7 @@ char
 Socket::GetByte() // throw Exception
 { 
     if (mIdx >= mBufLen) {
+        mTrace.Trace(CLULTRA, "GetByte() reloading buffer");
         mIdx = 0;
         mBufLen = ReceiveBytes(mBuf, MAXBUF);
     }
@@ -683,3 +686,7 @@ Socket::GetLastError(
     aErrorMsg = buf;
 #endif
 }
+
+#ifdef CROSSBASE_API
+END_CL_NAMESPACE
+#endif

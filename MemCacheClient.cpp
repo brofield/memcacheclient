@@ -13,15 +13,6 @@
 # include <stdint.h>
 #endif
 
-// lib
-#ifdef CROSSBASE_API
-# include <xplatform/timer.h>
-# include <Trace/cltrace.h>
-using namespace cl;
-#else
-# include "Matilda.h"
-#endif
-
 // If OpenSSL is available, better to use it
 //#include <openssl/sha.h>
 #include "sha1.h"
@@ -35,6 +26,15 @@ void SHA1(const unsigned char *d, size_t n, unsigned char *md) {
 // local
 #include "Socket.h"
 #include "MemCacheClient.h"
+
+// lib
+#ifdef CROSSBASE_API
+# include <xplatform/timer.h>
+# include <Trace/cltrace.h>
+START_CL_NAMESPACE
+#else
+# include "Matilda.h"
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -442,14 +442,16 @@ MemCacheClient::CreateKeyHash(
 MemCacheClient::Server *
 MemCacheClient::FindServer(
     const string_t & aKey,
-    unsigned aService
+    unsigned         aService
     )
 {
-    // in the tserver usage of this, the service must never be 0
+#ifdef CROSSBASE_API
+    // in our private usage of this, the service must never be 0
     if (aService == 0) {
         mTrace.Trace(CLERROR, "FindServer: no service requested, supplied cache server may not be appropriate!!!");
         CR_ASSERT(!"FindServer: no service requested, supplied cache server may not be appropriate!!!");
     }
+#endif
 
     // probably need some servers for this
     if (mServerHash.empty()) {
@@ -671,7 +673,7 @@ MemCacheClient::HandleGetResponse(
         // extract the key
         int n = (int) sValue.find(' ', 6);
         if (n < 1) throw Socket::Exception(Socket::ERR_OTHER, 0, "bad get response at key");
-        string_t sKey(sValue, 6, n - 6);
+        std::string sKey(sValue, 6, n - 6);
 
         // extract the flags
         const char * pVal = sValue.data() + n + 1;
@@ -685,7 +687,7 @@ MemCacheClient::HandleGetResponse(
         // find this key in the array
         MemRequest * pItem = NULL; 
         for (MemRequest ** p = aBegin; p < aEnd; ++p) {
-            if ((*p)->mKey == sKey) { pItem = *p; break; }
+            if ((*p)->mKey == sKey.data()) { pItem = *p; break; }
         }
         if (!pItem) { // key not found, discard the response
             aServer->DiscardBytes(nBytes + 2); // +2 == include final "\r\n"
@@ -996,3 +998,7 @@ MemCacheClient::FlushAll(
 
     return nSuccess;
 }
+
+#ifdef CROSSBASE_API
+END_CL_NAMESPACE
+#endif

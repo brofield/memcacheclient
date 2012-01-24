@@ -10,29 +10,32 @@
 # pragma once
 #endif
 
+#include <vector>
+
 #ifdef _WIN32
 # include <winsock2.h>
 #else
 # include <sys/socket.h>
 # include <arpa/inet.h>
-typedef int SOCKET;
 #endif
 
 #ifdef CROSSBASE_API
 # include <Core/clplatform.h>
 # include <Trace/cltrace.h>
+START_CL_NAMESPACE
 #else
 # include "Matilda.h"
 #endif
 
-#include <vector>
-
 /*! @brief Socket connection, disconnection, and buffered data receives. 
  */
-class Socket
+class CROSSBASE_CLASS_API Socket
 {
 protected:
     const static int MAXBUF = 1024; //!< size of internal data buffer
+#ifndef _WIN32
+    typedef int SOCKET;
+#endif
 
     ClTrace mTrace;             //!< trace output
     SOCKET  mSocket;            //!< socket being abstracted
@@ -158,11 +161,15 @@ public:
      */
     char GetByte();
 
-    /*! @brief Receive a line of text ending in \r\n. 
+    /*! @brief Receive a line of text ending in \n or \r\n. 
         @param aTrim Remove all trailing whitespace from the returned data.
         @throw Exception on socket error
      */
     void ReceiveLine(std::string & a_sLine, bool aTrim); // throw Exception
 };
+
+#ifdef CROSSBASE_API
+END_CL_NAMESPACE
+#endif
 
 #endif // INCLUDED_Socket
