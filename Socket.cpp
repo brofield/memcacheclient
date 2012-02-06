@@ -633,7 +633,7 @@ Socket::ReceiveLine(
 
     // trim all space from the end
     if (aTrim) {
-        while (!aLine.empty() && isspace((int)aLine[aLine.size()-1])) {
+        while (!aLine.empty() && isspace((unsigned)aLine[aLine.size()-1])) {
             aLine.resize(aLine.size()-1);
         }
     }
@@ -646,35 +646,27 @@ Socket::GetLastError(
     )
 {
 #ifdef _WIN32
-    // load wininet.dll for the error messages 
-    DWORD dwFlags = FORMAT_MESSAGE_ALLOCATE_BUFFER |
-        FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS;
-    HMODULE hModule = LoadLibraryExA("wininet.dll", NULL,
-        LOAD_LIBRARY_AS_DATAFILE | DONT_RESOLVE_DLL_REFERENCES);
-    if (hModule) {
-        dwFlags |= FORMAT_MESSAGE_FROM_HMODULE;
-    }
-
-    // note that we request a US English error message. This is to make the
+    // note that we first request a US English error message. This is to make the
     // message the same on servers regardless of the language that is running.
-    // since US English is a fallback language for error messages it will always
-    // return a valid message.
-    LPWSTR pBuf = NULL;
-    DWORD dwLen = FormatMessageW(
-        dwFlags, hModule, (DWORD) aError, 
+    const DWORD dwFlags = FORMAT_MESSAGE_ALLOCATE_BUFFER |
+        FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS;
+    const WORD lang[] = {
         MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US), 
-        (LPWSTR)&pBuf, 0, NULL);
-
-    // trim the CRLF off the end
-    while (dwLen > 0 && iswspace(pBuf[dwLen-1])) {
-        pBuf[--dwLen] = 0;
-    }
-    aErrorMsg = pBuf;
-    LocalFree(pBuf);
-
-    // free the library if we loaded it
-    if (hModule) {
-        FreeLibrary(hModule);
+        MAKELANGID(LANG_ENGLISH, SUBLANG_NEUTRAL), 
+        0 // default
+    };
+    for (int nlang = 0; nlang < 3; ++nlang) {
+        LPWSTR pBuf = NULL;
+        DWORD dwLen = FormatMessageW(
+            dwFlags, NULL, (DWORD) aError, 
+            lang[nlang], (LPWSTR)&pBuf, 0, NULL);
+        if (!pBuf) continue;
+        // trim the CRLF off the end
+        while (dwLen > 0 && iswspace(pBuf[dwLen-1])) {
+            pBuf[--dwLen] = 0;
+        }
+        aErrorMsg = pBuf;
+        LocalFree(pBuf);
     }
 #elif defined(CROSSBASE_API)
     ClGetLastError(aError, aErrorMsg);
