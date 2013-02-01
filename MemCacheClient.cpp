@@ -375,13 +375,13 @@ MemCacheClient::DelServer(
             Server * pServer = *i;
             if (test != *pServer) continue;
 
-            delete pServer;
             mServer.erase(i);
             ConsistentHash::MatchServer server(pServer);
-            mServerHash.erase(
-                std::partition(mServerHash.begin(), mServerHash.end(), server), 
-                mServerHash.end());
+            i = std::partition(mServerHash.begin(), mServerHash.end(), server);
+            mServerHash.erase(mServerHash.begin(), i);
             std::sort(mServerHash.begin(), mServerHash.end());
+
+            delete pServer;
             return true;
         }
     }
