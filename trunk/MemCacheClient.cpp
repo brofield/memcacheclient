@@ -377,8 +377,8 @@ MemCacheClient::DelServer(
 
             mServer.erase(i);
             ConsistentHash::MatchServer server(pServer);
-            i = std::partition(mServerHash.begin(), mServerHash.end(), server);
-            mServerHash.erase(mServerHash.begin(), i);
+            std::vector<ConsistentHash>::iterator bound = std::partition(mServerHash.begin(), mServerHash.end(), server);
+            mServerHash.erase(mServerHash.begin(), bound);
             std::sort(mServerHash.begin(), mServerHash.end());
 
             delete pServer;
