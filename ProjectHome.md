@@ -1,0 +1,1 @@
+A simple C++ client for the memcached server. Because all of the existing C++ clients available were a pain in the ass to use on Windows I wrote my own.
